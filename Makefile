@@ -3,7 +3,7 @@
 EXE=d2q9-bgk
 
 CC=gcc
-CFLAGS= -std=c99 -Wall -O3 -march=native -ffast-math -pg
+CFLAGS= -std=c99 -Wall -O3 -march=native -ffast-math
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
