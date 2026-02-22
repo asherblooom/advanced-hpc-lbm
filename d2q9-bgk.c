@@ -92,9 +92,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
 ** timestep calls, in order, the functions:
 ** accelerate_flow(), propagate(), rebound() & collision()
 */
-int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
+float timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles);
-int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
+float propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 int rebound(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 int write_values(const t_param params, t_speed* cells, int* obstacles, float* av_vels);
@@ -185,7 +185,7 @@ int main(int argc, char* argv[]) {
 	return EXIT_SUCCESS;
 }
 
-int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
+float timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
 	accelerate_flow(params, cells, obstacles);
 	return propagate(params, cells, tmp_cells, obstacles);
 	// rebound(params, cells, tmp_cells, obstacles);
@@ -222,7 +222,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	return EXIT_SUCCESS;
 }
 
-int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
+float propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
 	// collision variables
 	const float c_sq = 1.f / 3.f; /* square of speed of sound */
 	const float w0 = 4.f / 9.f;	  /* weighting factor */
