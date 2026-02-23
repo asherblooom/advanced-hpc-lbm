@@ -153,6 +153,10 @@ int main(int argc, char* argv[]) {
 
 	for (int tt = 0; tt < params.maxIters; tt++) {
 		av_vels[tt] = timestep(params, cells, tmp_cells, obstacles);
+		// Swap cells and tmp_cells, so cells has the new values for the next timestep!
+		t_speed* swap_ptr = cells;
+		cells = tmp_cells;
+		tmp_cells = swap_ptr;
 #ifdef DEBUG
 		printf("==timestep: %d==\n", tt);
 		printf("av velocity: %.12E\n", av_vels[tt]);
@@ -325,8 +329,8 @@ float propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int* o
 
 				/* relaxation step */
 				for (int kk = 0; kk < NSPEEDS; kk++) {
-					cells[ii + jj * params.nx].speeds[kk] = speeds[kk] +
-															params.omega * (d_equ[kk] - speeds[kk]);
+					tmp_cells[ii + jj * params.nx].speeds[kk] = speeds[kk] +
+																params.omega * (d_equ[kk] - speeds[kk]);
 				}
 
 				// AV_VELOCITY
