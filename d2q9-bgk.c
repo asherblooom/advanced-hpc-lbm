@@ -239,10 +239,10 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 
 float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
 	// collision variables
-	const float c_sq = 1.f / 3.f; /* square of speed of sound */
-	const float w0 = 4.f / 9.f;	  /* weighting factor */
-	const float w1 = 1.f / 9.f;	  /* weighting factor */
-	const float w2 = 1.f / 36.f;  /* weighting factor */
+	// const float c_sq = 1.f / 3.f; /* square of speed of sound */
+	const float w0 = 4.f / 9.f;	 /* weighting factor */
+	const float w1 = 1.f / 9.f;	 /* weighting factor */
+	const float w2 = 1.f / 36.f; /* weighting factor */
 
 	// c_sq is 1/3, so we can hardcode the inverted fractions
 	// const float c_sq_inv = 3.0f;		  // 1 / c_sq
@@ -607,13 +607,13 @@ float total_density(const t_param params, t_speed* cells) {
 }
 
 int write_values(const t_param params, t_speed* cells, int* obstacles, float* av_vels) {
-	FILE* fp; /* file pointer */
-	// const float c_sq = 1.f / 3.f; /* sq. of speed of sound */
-	float local_density; /* per grid cell sum of densities */
-	float pressure;		 /* fluid pressure in grid cell */
-	float u_x;			 /* x-component of velocity in grid cell */
-	float u_y;			 /* y-component of velocity in grid cell */
-	float u;			 /* norm--root of summed squares--of u_x and u_y */
+	FILE* fp;					  /* file pointer */
+	const float c_sq = 1.f / 3.f; /* sq. of speed of sound */
+	float local_density;		  /* per grid cell sum of densities */
+	float pressure;				  /* fluid pressure in grid cell */
+	float u_x;					  /* x-component of velocity in grid cell */
+	float u_y;					  /* y-component of velocity in grid cell */
+	float u;					  /* norm--root of summed squares--of u_x and u_y */
 
 	fp = fopen(FINALSTATEFILE, "w");
 
