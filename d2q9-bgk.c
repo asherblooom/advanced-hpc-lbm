@@ -270,15 +270,15 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 			} else {
 				/* compute local density total */
 				float local_density = 0.f;
-
-				for (int kk = 0; kk < NSPEEDS; kk++) {
+				for (int kk = 0; kk < NSPEEDS; kk++)
 					local_density += speeds[kk];
-				}
+				// use inv_density to avoid dividing
+				float inv_density = 1.0f / local_density;
 
 				/* compute x velocity component */
-				float u_x = (speeds[1] + speeds[5] + speeds[8] - (speeds[3] + speeds[6] + speeds[7])) / local_density;
+				float u_x = (speeds[1] + speeds[5] + speeds[8] - (speeds[3] + speeds[6] + speeds[7])) * inv_density;
 				/* compute y velocity component */
-				float u_y = (speeds[2] + speeds[5] + speeds[6] - (speeds[4] + speeds[7] + speeds[8])) / local_density;
+				float u_y = (speeds[2] + speeds[5] + speeds[6] - (speeds[4] + speeds[7] + speeds[8])) * inv_density;
 
 				/* velocity squared */
 				float u_sq = u_x * u_x + u_y * u_y;
@@ -297,8 +297,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 				/* equilibrium densities */
 				float d_equ[NSPEEDS];
 				/* zero velocity density: weight w0 */
-				d_equ[0] = w0 * local_density *
-						   (1.f - u_sq / (2.f * c_sq));
+				d_equ[0] = w0 * local_density * (1.f - u_sq / (2.f * c_sq));
 				/* axis speeds: weight w1 */
 				d_equ[1] = w1 * local_density * (1.f + u[1] / c_sq + (u[1] * u[1]) / (2.f * c_sq * c_sq) - u_sq / (2.f * c_sq));
 				d_equ[2] = w1 * local_density * (1.f + u[2] / c_sq + (u[2] * u[2]) / (2.f * c_sq * c_sq) - u_sq / (2.f * c_sq));
