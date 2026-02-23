@@ -222,6 +222,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	int jj = params.ny - 2;
 	int jj_nx = jj * params.nx;
 
+#pragma omp simd
 	for (int ii = 0; ii < params.nx; ii++) {
 		int idx = ii + jj_nx;
 		/* if the cell is not occupied and
@@ -288,6 +289,8 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 		int jj_nx = jj * params.nx;
 		int yn_nx = y_n * params.nx;
 		int ys_nx = y_s * params.nx;
+
+#pragma omp simd
 		for (int ii = 0; ii < params.nx; ii++) {
 			// current index
 			int idx = jj_nx + ii;
