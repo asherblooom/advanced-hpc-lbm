@@ -257,6 +257,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 			if (obstacles[jj * params.nx + ii]) {
 				/* called after propagate, so taking values from scratch space
 				** mirroring, and writing into main grid */
+				tmp_cells[ii + jj * params.nx].speeds[0] = speeds0;
 				tmp_cells[ii + jj * params.nx].speeds[1] = speeds3;
 				tmp_cells[ii + jj * params.nx].speeds[2] = speeds4;
 				tmp_cells[ii + jj * params.nx].speeds[3] = speeds1;
@@ -314,19 +315,19 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 				// for (int kk = 0; kk < NSPEEDS; kk++) {
 				// 	tmp_cells[ii + jj * params.nx].speeds[kk] = speeds[kk] + params.omega * (d_equ[kk] - speeds[kk]);
 				// }
-				tmp_cells[ii + jj * params.nx].speeds[0] = speeds0 + params.omega * (d_equ[1] - speeds0);
+				tmp_cells[ii + jj * params.nx].speeds[0] = speeds0 + params.omega * (d_equ[0] - speeds0);
 				tmp_cells[ii + jj * params.nx].speeds[1] = speeds1 + params.omega * (d_equ[1] - speeds1);
-				tmp_cells[ii + jj * params.nx].speeds[2] = speeds2 + params.omega * (d_equ[1] - speeds2);
-				tmp_cells[ii + jj * params.nx].speeds[3] = speeds3 + params.omega * (d_equ[1] - speeds3);
-				tmp_cells[ii + jj * params.nx].speeds[4] = speeds4 + params.omega * (d_equ[1] - speeds4);
-				tmp_cells[ii + jj * params.nx].speeds[5] = speeds5 + params.omega * (d_equ[1] - speeds5);
-				tmp_cells[ii + jj * params.nx].speeds[6] = speeds6 + params.omega * (d_equ[1] - speeds6);
-				tmp_cells[ii + jj * params.nx].speeds[7] = speeds7 + params.omega * (d_equ[1] - speeds7);
-				tmp_cells[ii + jj * params.nx].speeds[8] = speeds8 + params.omega * (d_equ[1] - speeds8);
+				tmp_cells[ii + jj * params.nx].speeds[2] = speeds2 + params.omega * (d_equ[2] - speeds2);
+				tmp_cells[ii + jj * params.nx].speeds[3] = speeds3 + params.omega * (d_equ[3] - speeds3);
+				tmp_cells[ii + jj * params.nx].speeds[4] = speeds4 + params.omega * (d_equ[4] - speeds4);
+				tmp_cells[ii + jj * params.nx].speeds[5] = speeds5 + params.omega * (d_equ[5] - speeds5);
+				tmp_cells[ii + jj * params.nx].speeds[6] = speeds6 + params.omega * (d_equ[6] - speeds6);
+				tmp_cells[ii + jj * params.nx].speeds[7] = speeds7 + params.omega * (d_equ[7] - speeds7);
+				tmp_cells[ii + jj * params.nx].speeds[8] = speeds8 + params.omega * (d_equ[8] - speeds8);
 
 				// AV_VELOCITY
 				/* accumulate the norm of x- and y- velocity components */
-				tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
+				tot_u += sqrtf(u_sq);
 				/* increase counter of inspected cells */
 				++tot_cells;
 			}
