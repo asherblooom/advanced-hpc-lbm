@@ -302,7 +302,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 		}
 
 #pragma omp assume holds(params.nx % 16 == 0)
-#pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64)
+#pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64) reduction(+ : tot_u, tot_cells)
 		for (int ii = 1; ii < params.nx - 1; ii++) {
 			// int x_e = (ii + 1) % params.nx;
 			// int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
@@ -329,7 +329,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 	// return EXIT_SUCCESS;
 }
 
-static inline void process_single_cell(
+static inline __attribute__((always_inline)) void process_single_cell(
 	const t_param params,
 	const float* restrict c0, const float* restrict c1, const float* restrict c2,
 	const float* restrict c3, const float* restrict c4, const float* restrict c5,
