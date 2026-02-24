@@ -217,7 +217,7 @@ float timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* ob
 	return timestep_merged(params, cells, tmp_cells, obstacles);
 }
 
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
+int accelerate_flow(const t_param params, t_speed* restrict cells, int* obstacles) {
 	float* restrict c1 = cells->s1;
 	float* restrict c3 = cells->s3;
 	float* restrict c5 = cells->s5;
@@ -256,7 +256,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	return EXIT_SUCCESS;
 }
 
-float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
+float timestep_merged(const t_param params, t_speed* restrict cells, t_speed* restrict tmp_cells, int* obstacles) {
 	const float* restrict c0 = cells->s0;
 	const float* restrict c1 = cells->s1;
 	const float* restrict c2 = cells->s2;
