@@ -513,27 +513,34 @@ int initialise(const char* paramfile, const char* obstaclefile,
   ** a 1D array of these structs.
   */
 
-	/* Allocate the individual velocity arrays inside the structs */
-	size_t total_bytes = params->ny * params->nx * sizeof(float);
+	// staggered allocation to prevent cache thrashing
+	const int padding_floats = 16;
+	int single_grid_floats = params->ny * params->nx;
+	int stride_floats = single_grid_floats + padding_floats;
+	// Allocate one contiguous block for all 9 speeds
+	int total_bytes = stride_floats * 9 * sizeof(float);
+
+	// Allocate the main cells block and assign the base to s0
 	cells_ptr->s0 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s1 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s2 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s3 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s4 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s5 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s6 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s7 = (float*)aligned_alloc(64, total_bytes);
-	cells_ptr->s8 = (float*)aligned_alloc(64, total_bytes);
+	// Manually offset the pointers for s1 through s8 by our staggered stride
+	cells_ptr->s1 = cells_ptr->s0 + (1 * stride_floats);
+	cells_ptr->s2 = cells_ptr->s0 + (2 * stride_floats);
+	cells_ptr->s3 = cells_ptr->s0 + (3 * stride_floats);
+	cells_ptr->s4 = cells_ptr->s0 + (4 * stride_floats);
+	cells_ptr->s5 = cells_ptr->s0 + (5 * stride_floats);
+	cells_ptr->s6 = cells_ptr->s0 + (6 * stride_floats);
+	cells_ptr->s7 = cells_ptr->s0 + (7 * stride_floats);
+	cells_ptr->s8 = cells_ptr->s0 + (8 * stride_floats);
 
 	tmp_cells_ptr->s0 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s1 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s2 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s3 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s4 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s5 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s6 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s7 = (float*)aligned_alloc(64, total_bytes);
-	tmp_cells_ptr->s8 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s1 = tmp_cells_ptr->s0 + (1 * stride_floats);
+	tmp_cells_ptr->s2 = tmp_cells_ptr->s0 + (2 * stride_floats);
+	tmp_cells_ptr->s3 = tmp_cells_ptr->s0 + (3 * stride_floats);
+	tmp_cells_ptr->s4 = tmp_cells_ptr->s0 + (4 * stride_floats);
+	tmp_cells_ptr->s5 = tmp_cells_ptr->s0 + (5 * stride_floats);
+	tmp_cells_ptr->s6 = tmp_cells_ptr->s0 + (6 * stride_floats);
+	tmp_cells_ptr->s7 = tmp_cells_ptr->s0 + (7 * stride_floats);
+	tmp_cells_ptr->s8 = tmp_cells_ptr->s0 + (8 * stride_floats);
 
 	/* the map of obstacles */
 	*obstacles_ptr = malloc(sizeof(int) * (params->ny * params->nx));
@@ -610,25 +617,9 @@ int finalise(const t_param* params, t_speed* cells_ptr, t_speed* tmp_cells_ptr,
 	/*
   ** free up allocated memory
   */
+	// allocated as one big block so just need to free s0
 	free(cells_ptr->s0);
-	free(cells_ptr->s1);
-	free(cells_ptr->s2);
-	free(cells_ptr->s3);
-	free(cells_ptr->s4);
-	free(cells_ptr->s5);
-	free(cells_ptr->s6);
-	free(cells_ptr->s7);
-	free(cells_ptr->s8);
-
 	free(tmp_cells_ptr->s0);
-	free(tmp_cells_ptr->s1);
-	free(tmp_cells_ptr->s2);
-	free(tmp_cells_ptr->s3);
-	free(tmp_cells_ptr->s4);
-	free(tmp_cells_ptr->s5);
-	free(tmp_cells_ptr->s6);
-	free(tmp_cells_ptr->s7);
-	free(tmp_cells_ptr->s8);
 
 	free(*obstacles_ptr);
 	*obstacles_ptr = NULL;
