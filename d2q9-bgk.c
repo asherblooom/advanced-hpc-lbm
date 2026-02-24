@@ -306,6 +306,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 		for (int ii = 1; ii < params.nx - 1; ii++) {
 			// int x_e = (ii + 1) % params.nx;
 			// int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
+			//
 			int x_e = ii + 1;
 			int x_w = ii - 1;
 			process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
