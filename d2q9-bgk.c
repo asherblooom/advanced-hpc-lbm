@@ -410,13 +410,13 @@ static inline void process_single_cell(
 	// 3. Use ternary operators to mask the writes to memory.
 	// Format: (Condition) ? (Bounce-back value) : (Collision value)
 	t0[idx] = is_solid ? speeds0 : (speeds0 * one_minus_omega + w0_den_omega * one_minus_term_sq);
-	t1[idx] = is_solid ? speeds3 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)));
-	t2[idx] = is_solid ? speeds4 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)));
-	t3[idx] = is_solid ? speeds1 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)));
-	t4[idx] = is_solid ? speeds2 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)));
-	t5[idx] = is_solid ? speeds7 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)));
-	t6[idx] = is_solid ? speeds8 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)));
-	t7[idx] = is_solid ? speeds5 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
+	t1[idx] = is_solid ? speeds3 : (speeds1 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)));
+	t2[idx] = is_solid ? speeds4 : (speeds2 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)));
+	t3[idx] = is_solid ? speeds1 : (speeds3 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)));
+	t4[idx] = is_solid ? speeds2 : (speeds4 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)));
+	t5[idx] = is_solid ? speeds7 : (speeds5 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)));
+	t6[idx] = is_solid ? speeds8 : (speeds6 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)));
+	t7[idx] = is_solid ? speeds5 : (speeds7 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
 	t8[idx] = is_solid ? speeds6 : (speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)));
 
 	// 4. Handle Reductions unconditionally
