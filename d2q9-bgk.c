@@ -233,7 +233,8 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	int jj = params.ny - 2;
 	int jj_nx = jj * params.nx;
 
-#pragma omp simd
+#pragma omp assume holds(params.nx % 16 == 0)
+#pragma omp simd aligned(c1, c3, c5, c6, c7, c8 : 64)
 	for (int ii = 0; ii < params.nx; ii++) {
 		int idx = ii + jj_nx;
 		/* if the cell is not occupied and
@@ -300,10 +301,13 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 								ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
 		}
 
-#pragma omp simd
+#pragma omp assume holds(params.nx % 16 == 0)
+#pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64)
 		for (int ii = 1; ii < params.nx - 1; ii++) {
-			int x_w = ii - 1;
+			// int x_e = (ii + 1) % params.nx;
+			// int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
 			int x_e = ii + 1;
+			int x_w = ii - 1;
 			process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
 								t0, t1, t2, t3, t4, t5, t6, t7, t8, obstacles,
 								ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
@@ -380,30 +384,8 @@ static inline void process_single_cell(
 	float cu7 = -cu5;
 	float cu8 = -cu6;
 
-	// /* combine equilibrium densities and relaxation step */
-	// /* zero velocity density: weight w0 */
-	// t0[idx] = speeds0 + w0_den_omega * one_minus_term_sq - params.omega * speeds0;
-	// /* axis speeds: weight w1 */
-	// t1[idx] = speeds1 + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)) - params.omega * speeds1;
-	// t2[idx] = speeds2 + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)) - params.omega * speeds2;
-	// t3[idx] = speeds3 + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)) - params.omega * speeds3;
-	// t4[idx] = speeds4 + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)) - params.omega * speeds4;
-	// /* diagonal speeds: weight w2 */
-	// t5[idx] = speeds5 + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)) - params.omega * speeds5;
-	// t6[idx] = speeds6 + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)) - params.omega * speeds6;
-	// t7[idx] = speeds7 + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)) - params.omega * speeds7;
-	// t8[idx] = speeds8 + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)) - params.omega * speeds8;
-	//
-	// // AV_VELOCITY
-	// /* accumulate the norm of x- and y- velocity components */
-	// *tot_u += sqrtf(u_sq);
-	// /* increase counter of inspected cells */
-	// ++(*tot_cells);
-
-	// 2. Cache the obstacle check (optional but clean)
 	int is_solid = obstacles[idx];
-	// 3. Use ternary operators to mask the writes to memory.
-	// Format: (Condition) ? (Bounce-back value) : (Collision value)
+	// Use ternary operators to avoid big branch in loop body
 	t0[idx] = is_solid ? speeds0 : (speeds0 + w0_den_omega * one_minus_term_sq - params.omega * speeds0);
 	t1[idx] = is_solid ? speeds3 : (speeds1 + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)) - params.omega * speeds1);
 	t2[idx] = is_solid ? speeds4 : (speeds2 + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)) - params.omega * speeds2);
@@ -414,11 +396,7 @@ static inline void process_single_cell(
 	t7[idx] = is_solid ? speeds5 : (speeds7 + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)) - params.omega * speeds7);
 	t8[idx] = is_solid ? speeds6 : (speeds8 + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)) - params.omega * speeds8);
 
-	// 4. Handle Reductions unconditionally
-	// Mask velocity to 0.0 if solid, otherwise calculate the square root
 	*tot_u += is_solid ? 0.0f : sqrtf(u_sq);
-
-	// Add 0 if solid, 1 if fluid
 	*tot_cells += is_solid ? 0 : 1;
 }
 
@@ -535,25 +513,26 @@ int initialise(const char* paramfile, const char* obstaclefile,
   */
 
 	/* Allocate the individual velocity arrays inside the structs */
-	cells_ptr->s0 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s1 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s2 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s3 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s4 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s5 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s6 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s7 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	cells_ptr->s8 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
+	size_t total_bytes = params->ny * params->nx * sizeof(float);
+	cells_ptr->s0 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s1 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s2 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s3 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s4 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s5 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s6 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s7 = (float*)aligned_alloc(64, total_bytes);
+	cells_ptr->s8 = (float*)aligned_alloc(64, total_bytes);
 
-	tmp_cells_ptr->s0 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s1 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s2 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s3 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s4 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s5 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s6 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s7 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
-	tmp_cells_ptr->s8 = (float*)malloc(sizeof(float) * (params->ny * params->nx));
+	tmp_cells_ptr->s0 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s1 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s2 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s3 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s4 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s5 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s6 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s7 = (float*)aligned_alloc(64, total_bytes);
+	tmp_cells_ptr->s8 = (float*)aligned_alloc(64, total_bytes);
 
 	/* the map of obstacles */
 	*obstacles_ptr = malloc(sizeof(int) * (params->ny * params->nx));
