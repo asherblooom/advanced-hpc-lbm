@@ -340,6 +340,11 @@ static inline void process_single_cell(
 	const float w2 = 1.f / 36.f; /* weighting factor */
 	// c_sq is 1/3, so we can hardcode the inverted fraction
 	const float c_sq_inv_half = 1.5f;  // 1 / (2 * c_sq)
+	// pre-calculate as much as possible
+	const float one_minus_omega = 1.0f - params.omega;
+	const float omega_w0 = params.omega * w0;
+	const float omega_w1 = params.omega * w1;
+	const float omega_w2 = params.omega * w2;
 
 	/* propagate densities from neighbouring cells, following
 	** appropriate directions of travel and writing into
@@ -366,9 +371,9 @@ static inline void process_single_cell(
 	// Pre-calculate common terms
 	float term_sq = u_sq * c_sq_inv_half;
 	float one_minus_term_sq = 1.0f - term_sq;
-	float w0_den_omega = params.omega * w0 * local_density;
-	float w1_den_omega = params.omega * w1 * local_density;
-	float w2_den_omega = params.omega * w2 * local_density;
+	float w0_den_omega = omega_w0 * local_density;
+	float w1_den_omega = omega_w1 * local_density;
+	float w2_den_omega = omega_w2 * local_density;
 
 	float cu1 = 3.0f * u_x;
 	float cu2 = 3.0f * u_y;
@@ -404,15 +409,17 @@ static inline void process_single_cell(
 	int is_solid = obstacles[idx];
 	// 3. Use ternary operators to mask the writes to memory.
 	// Format: (Condition) ? (Bounce-back value) : (Collision value)
-	t0[idx] = is_solid ? speeds0 : (speeds0 + w0_den_omega * one_minus_term_sq - params.omega * speeds0);
-	t1[idx] = is_solid ? speeds3 : (speeds1 + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)) - params.omega * speeds1);
-	t2[idx] = is_solid ? speeds4 : (speeds2 + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)) - params.omega * speeds2);
-	t3[idx] = is_solid ? speeds1 : (speeds3 + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)) - params.omega * speeds3);
-	t4[idx] = is_solid ? speeds2 : (speeds4 + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)) - params.omega * speeds4);
-	t5[idx] = is_solid ? speeds7 : (speeds5 + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)) - params.omega * speeds5);
-	t6[idx] = is_solid ? speeds8 : (speeds6 + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)) - params.omega * speeds6);
-	t7[idx] = is_solid ? speeds5 : (speeds7 + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)) - params.omega * speeds7);
+	t0[idx] = is_solid ? speeds0 : (speeds0 * one_minus_omega + w0_den_omega * one_minus_term_sq);
+	t1[idx] = is_solid ? speeds3 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)));
+	t2[idx] = is_solid ? speeds4 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)));
+	t3[idx] = is_solid ? speeds1 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)));
+	t4[idx] = is_solid ? speeds2 : (one_minus_omega + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)));
+	t5[idx] = is_solid ? speeds7 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)));
+	t6[idx] = is_solid ? speeds8 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)));
+	t7[idx] = is_solid ? speeds5 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
 	t8[idx] = is_solid ? speeds6 : (speeds8 + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)) - params.omega * speeds8);
+
+	t8[idx] = speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8));
 
 	// 4. Handle Reductions unconditionally
 	// Mask velocity to 0.0 if solid, otherwise calculate the square root
