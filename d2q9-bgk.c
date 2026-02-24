@@ -417,9 +417,7 @@ static inline void process_single_cell(
 	t5[idx] = is_solid ? speeds7 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)));
 	t6[idx] = is_solid ? speeds8 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)));
 	t7[idx] = is_solid ? speeds5 : (one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
-	t8[idx] = is_solid ? speeds6 : (speeds8 + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)) - params.omega * speeds8);
-
-	t8[idx] = speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8));
+	t8[idx] = is_solid ? speeds6 : (speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)));
 
 	// 4. Handle Reductions unconditionally
 	// Mask velocity to 0.0 if solid, otherwise calculate the square root
