@@ -266,15 +266,19 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 	float* restrict t8 = tmp_cells->s8;
 
 	// collision variables
-	// const float c_sq = 1.f / 3.f; /* square of speed of sound */
 	const float w0 = 4.f / 9.f;	 /* weighting factor */
 	const float w1 = 1.f / 9.f;	 /* weighting factor */
 	const float w2 = 1.f / 36.f; /* weighting factor */
 
-	// c_sq is 1/3, so we can hardcode the inverted fractions
-	// const float c_sq_inv = 3.0f;		  // 1 / c_sq
+	// c_sq is 1/3, so we can hardcode the inverted fraction
+	// const float c_sq = 1.f / 3.f; /* square of speed of sound */
 	const float c_sq_inv_half = 1.5f;  // 1 / (2 * c_sq)
-	// const float c_sq_sq_inv_half = 4.5f;  // 1 / (2 * c_sq * c_sq)
+
+	// pre-calculate as much as possible
+	const float one_minus_omega = 1.0f - params.omega;
+	const float omega_w0 = params.omega * w0;
+	const float omega_w1 = params.omega * w1;
+	const float omega_w2 = params.omega * w2;
 
 	// av_velocity variables
 	int tot_cells = 0; /* no. of cells used in calculation */
@@ -323,9 +327,6 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 			} else {
 				/* compute local density total */
 				float local_density = speeds0 + speeds1 + speeds2 + speeds3 + speeds4 + speeds5 + speeds6 + speeds7 + speeds8;
-				// for (int kk = 0; kk < NSPEEDS; kk++) {
-				// 	local_density += speeds[kk];
-				// }
 				float inv_density = 1.0f / local_density;  // avoid division
 				/* compute x velocity component */
 				float u_x = (speeds1 + speeds5 + speeds8 - (speeds3 + speeds6 + speeds7)) * inv_density;
@@ -336,9 +337,9 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 				// Pre-calculate common terms
 				float term_sq = u_sq * c_sq_inv_half;
 				float one_minus_term_sq = 1.0f - term_sq;
-				float w0_den_omega = params.omega * w0 * local_density;
-				float w1_den_omega = params.omega * w1 * local_density;
-				float w2_den_omega = params.omega * w2 * local_density;
+				float w0_den_omega = omega_w0 * local_density;
+				float w1_den_omega = omega_w1 * local_density;
+				float w2_den_omega = omega_w2 * local_density;
 
 				float cu1 = 3.0f * u_x;
 				float cu2 = 3.0f * u_y;
@@ -352,17 +353,17 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 
 				/* combine equilibrium densities and relaxation step */
 				/* zero velocity density: weight w0 */
-				t0[idx] = speeds0 + w0_den_omega * one_minus_term_sq - params.omega * speeds0;
+				t0[idx] = speeds0 * one_minus_omega + w0_den_omega * one_minus_term_sq;
 				/* axis speeds: weight w1 */
-				t1[idx] = speeds1 + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)) - params.omega * speeds1;
-				t2[idx] = speeds2 + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)) - params.omega * speeds2;
-				t3[idx] = speeds3 + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)) - params.omega * speeds3;
-				t4[idx] = speeds4 + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)) - params.omega * speeds4;
+				t1[idx] = speeds1 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1));
+				t2[idx] = speeds2 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2));
+				t3[idx] = speeds3 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3));
+				t4[idx] = speeds4 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4));
 				/* diagonal speeds: weight w2 */
-				t5[idx] = speeds5 + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)) - params.omega * speeds5;
-				t6[idx] = speeds6 + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)) - params.omega * speeds6;
-				t7[idx] = speeds7 + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)) - params.omega * speeds7;
-				t8[idx] = speeds8 + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)) - params.omega * speeds8;
+				t5[idx] = speeds5 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5));
+				t6[idx] = speeds6 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6));
+				t7[idx] = speeds7 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7));
+				t8[idx] = speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8));
 
 				// AV_VELOCITY
 				/* accumulate the norm of x- and y- velocity components */
