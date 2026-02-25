@@ -329,7 +329,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 	const float omega_w2 = params.omega * w2;
 
 	/* loop over _all_ cells */
-	for (int jj = 0; jj < params.ny; jj++) {
+	for (int jj = 1; jj < params.ny + 1; jj++) {
 		// these dont rely on ii, so calculate them here
 		// int y_n = (jj + 1) % params.ny;
 		// int y_s = (jj == 0) ? (jj + params.ny - 1) : (jj - 1);
@@ -554,7 +554,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	memset(tmp_cells_ptr->s0, 0, total_bytes);
 
 	/* the map of obstacles */
-	*obstacles_ptr = calloc((ny_pad * nx_pad), sizeof(int));
+	*obstacles_ptr = malloc((ny_pad * nx_pad) * sizeof(int));
 	if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
 	/* initialise densities */
@@ -582,9 +582,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	}
 
 	/* first set all cells in obstacle array to zero */
-	for (int jj = 0; jj < params->ny; jj++) {
-		for (int ii = 0; ii < params->nx; ii++) {
-			(*obstacles_ptr)[ii + jj * params->nx] = 0;
+	for (int jj = 0; jj < ny_pad; jj++) {
+		for (int ii = 0; ii < nx_pad; ii++) {
+			(*obstacles_ptr)[ii + jj * nx_pad] = 0;
 		}
 	}
 
