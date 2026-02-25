@@ -348,7 +348,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 	const float omega_w2 = params.omega * w2;
 
 	/* loop over _all_ cells */
-#pragma omp parallel for reduction(+ : tot_u, tot_cells)  //schedule(static)
+#pragma omp parallel for reduction(+ : tot_u, tot_cells) schedule(static)
 	for (int jj = 1; jj < params.ny + 1; jj++) {
 		// these dont rely on ii, so calculate them here
 		// int y_n = (jj + 1) % params.ny;
@@ -569,9 +569,63 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	tmp_cells_ptr->s7 = tmp_cells_ptr->s0 + (7 * stride_floats);
 	tmp_cells_ptr->s8 = tmp_cells_ptr->s0 + (8 * stride_floats);
 
-	// Zero out the memory so padding doesn't contain garbage data
-	memset(cells_ptr->s0, 0, total_bytes);
-	memset(tmp_cells_ptr->s0, 0, total_bytes);
+#pragma omp parallel for schedule(static)
+	for (int jj = 0; jj < ny_pad; jj++) {
+		int jj_nx = jj * nx_pad;
+		for (int ii = 0; ii < nx_pad; ii++) {
+			int idx = ii + jj_nx;
+
+			// Touch cells
+			cells_ptr->s0[idx] = 0.0f;
+			cells_ptr->s1[idx] = 0.0f;
+			cells_ptr->s2[idx] = 0.0f;
+			cells_ptr->s3[idx] = 0.0f;
+			cells_ptr->s4[idx] = 0.0f;
+			cells_ptr->s5[idx] = 0.0f;
+			cells_ptr->s6[idx] = 0.0f;
+			cells_ptr->s7[idx] = 0.0f;
+			cells_ptr->s8[idx] = 0.0f;
+
+			// Touch tmp_cells
+			tmp_cells_ptr->s0[idx] = 0.0f;
+			tmp_cells_ptr->s1[idx] = 0.0f;
+			tmp_cells_ptr->s2[idx] = 0.0f;
+			tmp_cells_ptr->s3[idx] = 0.0f;
+			tmp_cells_ptr->s4[idx] = 0.0f;
+			tmp_cells_ptr->s5[idx] = 0.0f;
+			tmp_cells_ptr->s6[idx] = 0.0f;
+			tmp_cells_ptr->s7[idx] = 0.0f;
+			tmp_cells_ptr->s8[idx] = 0.0f;
+
+			// Touch obstacles
+			(*obstacles_ptr)[idx] = 0;
+		}
+	}
+
+	// Zero out the padding floats
+	for (int p = 0; p < padding_floats; p++) {
+		int idx = (ny_pad * nx_pad) + p;
+		cells_ptr->s0[idx] = 0.0f;
+		cells_ptr->s1[idx] = 0.0f;
+		cells_ptr->s2[idx] = 0.0f;
+		cells_ptr->s3[idx] = 0.0f;
+		cells_ptr->s4[idx] = 0.0f;
+		cells_ptr->s5[idx] = 0.0f;
+		cells_ptr->s6[idx] = 0.0f;
+		cells_ptr->s7[idx] = 0.0f;
+		cells_ptr->s8[idx] = 0.0f;
+
+		// Touch tmp_cells
+		tmp_cells_ptr->s0[idx] = 0.0f;
+		tmp_cells_ptr->s1[idx] = 0.0f;
+		tmp_cells_ptr->s2[idx] = 0.0f;
+		tmp_cells_ptr->s3[idx] = 0.0f;
+		tmp_cells_ptr->s4[idx] = 0.0f;
+		tmp_cells_ptr->s5[idx] = 0.0f;
+		tmp_cells_ptr->s6[idx] = 0.0f;
+		tmp_cells_ptr->s7[idx] = 0.0f;
+		tmp_cells_ptr->s8[idx] = 0.0f;
+	}
 
 	/* the map of obstacles */
 	*obstacles_ptr = malloc((ny_pad * nx_pad) * sizeof(int));
@@ -582,6 +636,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	float w1 = params->density / 9.f;
 	float w2 = params->density / 36.f;
 
+#pragma omp parallel for schedule(static)
 	for (int jj = 1; jj < params->ny + 1; jj++) {
 		int jj_nx = jj * nx_pad;
 		for (int ii = 16; ii < params->nx + 16; ii++) {
@@ -598,13 +653,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
 			cells_ptr->s6[idx] = w2;
 			cells_ptr->s7[idx] = w2;
 			cells_ptr->s8[idx] = w2;
-		}
-	}
-
-	/* first set all cells in obstacle array to zero */
-	for (int jj = 0; jj < ny_pad; jj++) {
-		for (int ii = 0; ii < nx_pad; ii++) {
-			(*obstacles_ptr)[ii + jj * nx_pad] = 0;
 		}
 	}
 
