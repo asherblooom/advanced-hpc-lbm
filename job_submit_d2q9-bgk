@@ -3,17 +3,21 @@
 #SBATCH --job-name=d2q9-bgk
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=144
 #SBATCH --time=00:10:00
 #SBATCH --output=d2q9-bgk.out
-#SBATCH --exclusive 
+#SBATCH --exclusive
 
-echo Running on host `hostname`
-echo Time is `date`
-echo Directory is `pwd`
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OMP_PROC_BIND=true
+export OMP_PLACES=cores
+
+echo Running on host $(hostname)
+echo Time is $(date)
+echo Directory is $(pwd)
 echo Slurm job ID is $SLURM_JOB_ID
 echo This job runs on the following machines:
-echo `echo $SLURM_JOB_NODELIST | uniq`
+echo $(echo $SLURM_JOB_NODELIST | uniq)
 
 #GRID=128x128
 #GRID=128x256
@@ -27,4 +31,3 @@ make
 #perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk input_$GRID.params obstacles_$GRID.dat
 ./d2q9-bgk input_$GRID.params obstacles_$GRID.dat
 make check REF_AV_VELS_FILE=check/$GRID.av_vels.dat REF_FINAL_STATE_FILE=check/$GRID.final_state.dat
-
