@@ -204,17 +204,31 @@ int main(int argc, char* argv[]) {
 
 void exchange_halo(const t_param params, t_speed* cells) {
 	int nx_pad = params.nx + 32;
-	float* s[9] = {cells->s0, cells->s1, cells->s2, cells->s3, cells->s4,
-				   cells->s5, cells->s6, cells->s7, cells->s8};
 
 	// East-West wrap
 	for (int jj = 1; jj <= params.ny; jj++) {
 		int row = jj * nx_pad;
 		for (int k = 0; k < 9; k++) {
 			// Left halo cell gets rightmost physical cell
-			s[k][row + 15] = s[k][row + params.nx + 15];
+			cells->s0[row + 15] = cells->s0[row + params.nx + 15];
 			// Right halo cell gets leftmost physical cell
-			s[k][row + params.nx + 16] = s[k][row + 16];
+			cells->s0[row + params.nx + 16] = cells->s0[row + 16];
+			cells->s1[row + 15] = cells->s1[row + params.nx + 15];
+			cells->s1[row + params.nx + 16] = cells->s1[row + 16];
+			cells->s2[row + 15] = cells->s2[row + params.nx + 15];
+			cells->s2[row + params.nx + 16] = cells->s2[row + 16];
+			cells->s3[row + 15] = cells->s3[row + params.nx + 15];
+			cells->s3[row + params.nx + 16] = cells->s3[row + 16];
+			cells->s4[row + 15] = cells->s4[row + params.nx + 15];
+			cells->s4[row + params.nx + 16] = cells->s4[row + 16];
+			cells->s5[row + 15] = cells->s5[row + params.nx + 15];
+			cells->s5[row + params.nx + 16] = cells->s5[row + 16];
+			cells->s6[row + 15] = cells->s6[row + params.nx + 15];
+			cells->s6[row + params.nx + 16] = cells->s6[row + 16];
+			cells->s7[row + 15] = cells->s7[row + params.nx + 15];
+			cells->s7[row + params.nx + 16] = cells->s7[row + 16];
+			cells->s8[row + 15] = cells->s8[row + params.nx + 15];
+			cells->s8[row + params.nx + 16] = cells->s8[row + 16];
 		}
 	}
 
@@ -226,8 +240,24 @@ void exchange_halo(const t_param params, t_speed* cells) {
 		int top_halo = (params.ny + 1) * nx_pad;
 
 		for (int k = 0; k < 9; k++) {
-			s[k][bot_halo + ii] = s[k][top_phys + ii];
-			s[k][top_halo + ii] = s[k][bot_phys + ii];
+			cells->s0[bot_halo + ii] = cells->s0[top_phys + ii];
+			cells->s0[top_halo + ii] = cells->s0[bot_phys + ii];
+			cells->s1[bot_halo + ii] = cells->s1[top_phys + ii];
+			cells->s1[top_halo + ii] = cells->s1[bot_phys + ii];
+			cells->s2[bot_halo + ii] = cells->s2[top_phys + ii];
+			cells->s2[top_halo + ii] = cells->s2[bot_phys + ii];
+			cells->s3[bot_halo + ii] = cells->s3[top_phys + ii];
+			cells->s3[top_halo + ii] = cells->s3[bot_phys + ii];
+			cells->s4[bot_halo + ii] = cells->s4[top_phys + ii];
+			cells->s4[top_halo + ii] = cells->s4[bot_phys + ii];
+			cells->s5[bot_halo + ii] = cells->s5[top_phys + ii];
+			cells->s5[top_halo + ii] = cells->s5[bot_phys + ii];
+			cells->s6[bot_halo + ii] = cells->s6[top_phys + ii];
+			cells->s6[top_halo + ii] = cells->s6[bot_phys + ii];
+			cells->s7[bot_halo + ii] = cells->s7[top_phys + ii];
+			cells->s7[top_halo + ii] = cells->s7[bot_phys + ii];
+			cells->s8[bot_halo + ii] = cells->s8[top_phys + ii];
+			cells->s8[top_halo + ii] = cells->s8[bot_phys + ii];
 		}
 	}
 }
@@ -318,6 +348,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 	const float omega_w2 = params.omega * w2;
 
 	/* loop over _all_ cells */
+#pragma omp parallel for reduction(+ : tot_u, tot_cells)  //schedule(static)
 	for (int jj = 1; jj < params.ny + 1; jj++) {
 		// these dont rely on ii, so calculate them here
 		// int y_n = (jj + 1) % params.ny;
