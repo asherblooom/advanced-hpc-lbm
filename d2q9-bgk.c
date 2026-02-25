@@ -208,28 +208,26 @@ void exchange_halo(const t_param params, t_speed* cells) {
 	// East-West wrap
 	for (int jj = 1; jj <= params.ny; jj++) {
 		int row = jj * nx_pad;
-		for (int k = 0; k < 9; k++) {
-			// Left halo cell gets rightmost physical cell
-			cells->s0[row + 15] = cells->s0[row + params.nx + 15];
-			// Right halo cell gets leftmost physical cell
-			cells->s0[row + params.nx + 16] = cells->s0[row + 16];
-			cells->s1[row + 15] = cells->s1[row + params.nx + 15];
-			cells->s1[row + params.nx + 16] = cells->s1[row + 16];
-			cells->s2[row + 15] = cells->s2[row + params.nx + 15];
-			cells->s2[row + params.nx + 16] = cells->s2[row + 16];
-			cells->s3[row + 15] = cells->s3[row + params.nx + 15];
-			cells->s3[row + params.nx + 16] = cells->s3[row + 16];
-			cells->s4[row + 15] = cells->s4[row + params.nx + 15];
-			cells->s4[row + params.nx + 16] = cells->s4[row + 16];
-			cells->s5[row + 15] = cells->s5[row + params.nx + 15];
-			cells->s5[row + params.nx + 16] = cells->s5[row + 16];
-			cells->s6[row + 15] = cells->s6[row + params.nx + 15];
-			cells->s6[row + params.nx + 16] = cells->s6[row + 16];
-			cells->s7[row + 15] = cells->s7[row + params.nx + 15];
-			cells->s7[row + params.nx + 16] = cells->s7[row + 16];
-			cells->s8[row + 15] = cells->s8[row + params.nx + 15];
-			cells->s8[row + params.nx + 16] = cells->s8[row + 16];
-		}
+		// Left halo cell gets rightmost physical cell
+		cells->s0[row + 15] = cells->s0[row + params.nx + 15];
+		// Right halo cell gets leftmost physical cell
+		cells->s0[row + params.nx + 16] = cells->s0[row + 16];
+		cells->s1[row + 15] = cells->s1[row + params.nx + 15];
+		cells->s1[row + params.nx + 16] = cells->s1[row + 16];
+		cells->s2[row + 15] = cells->s2[row + params.nx + 15];
+		cells->s2[row + params.nx + 16] = cells->s2[row + 16];
+		cells->s3[row + 15] = cells->s3[row + params.nx + 15];
+		cells->s3[row + params.nx + 16] = cells->s3[row + 16];
+		cells->s4[row + 15] = cells->s4[row + params.nx + 15];
+		cells->s4[row + params.nx + 16] = cells->s4[row + 16];
+		cells->s5[row + 15] = cells->s5[row + params.nx + 15];
+		cells->s5[row + params.nx + 16] = cells->s5[row + 16];
+		cells->s6[row + 15] = cells->s6[row + params.nx + 15];
+		cells->s6[row + params.nx + 16] = cells->s6[row + 16];
+		cells->s7[row + 15] = cells->s7[row + params.nx + 15];
+		cells->s7[row + params.nx + 16] = cells->s7[row + 16];
+		cells->s8[row + 15] = cells->s8[row + params.nx + 15];
+		cells->s8[row + params.nx + 16] = cells->s8[row + 16];
 	}
 
 	// North-South wrap (copying the active width including halos)
@@ -239,26 +237,24 @@ void exchange_halo(const t_param params, t_speed* cells) {
 		int top_phys = params.ny * nx_pad;
 		int top_halo = (params.ny + 1) * nx_pad;
 
-		for (int k = 0; k < 9; k++) {
-			cells->s0[bot_halo + ii] = cells->s0[top_phys + ii];
-			cells->s0[top_halo + ii] = cells->s0[bot_phys + ii];
-			cells->s1[bot_halo + ii] = cells->s1[top_phys + ii];
-			cells->s1[top_halo + ii] = cells->s1[bot_phys + ii];
-			cells->s2[bot_halo + ii] = cells->s2[top_phys + ii];
-			cells->s2[top_halo + ii] = cells->s2[bot_phys + ii];
-			cells->s3[bot_halo + ii] = cells->s3[top_phys + ii];
-			cells->s3[top_halo + ii] = cells->s3[bot_phys + ii];
-			cells->s4[bot_halo + ii] = cells->s4[top_phys + ii];
-			cells->s4[top_halo + ii] = cells->s4[bot_phys + ii];
-			cells->s5[bot_halo + ii] = cells->s5[top_phys + ii];
-			cells->s5[top_halo + ii] = cells->s5[bot_phys + ii];
-			cells->s6[bot_halo + ii] = cells->s6[top_phys + ii];
-			cells->s6[top_halo + ii] = cells->s6[bot_phys + ii];
-			cells->s7[bot_halo + ii] = cells->s7[top_phys + ii];
-			cells->s7[top_halo + ii] = cells->s7[bot_phys + ii];
-			cells->s8[bot_halo + ii] = cells->s8[top_phys + ii];
-			cells->s8[top_halo + ii] = cells->s8[bot_phys + ii];
-		}
+		cells->s0[bot_halo + ii] = cells->s0[top_phys + ii];
+		cells->s0[top_halo + ii] = cells->s0[bot_phys + ii];
+		cells->s1[bot_halo + ii] = cells->s1[top_phys + ii];
+		cells->s1[top_halo + ii] = cells->s1[bot_phys + ii];
+		cells->s2[bot_halo + ii] = cells->s2[top_phys + ii];
+		cells->s2[top_halo + ii] = cells->s2[bot_phys + ii];
+		cells->s3[bot_halo + ii] = cells->s3[top_phys + ii];
+		cells->s3[top_halo + ii] = cells->s3[bot_phys + ii];
+		cells->s4[bot_halo + ii] = cells->s4[top_phys + ii];
+		cells->s4[top_halo + ii] = cells->s4[bot_phys + ii];
+		cells->s5[bot_halo + ii] = cells->s5[top_phys + ii];
+		cells->s5[top_halo + ii] = cells->s5[bot_phys + ii];
+		cells->s6[bot_halo + ii] = cells->s6[top_phys + ii];
+		cells->s6[top_halo + ii] = cells->s6[bot_phys + ii];
+		cells->s7[bot_halo + ii] = cells->s7[top_phys + ii];
+		cells->s7[top_halo + ii] = cells->s7[bot_phys + ii];
+		cells->s8[bot_halo + ii] = cells->s8[top_phys + ii];
+		cells->s8[top_halo + ii] = cells->s8[bot_phys + ii];
 	}
 }
 
@@ -569,6 +565,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	tmp_cells_ptr->s7 = tmp_cells_ptr->s0 + (7 * stride_floats);
 	tmp_cells_ptr->s8 = tmp_cells_ptr->s0 + (8 * stride_floats);
 
+	/* the map of obstacles */
+	*obstacles_ptr = malloc((ny_pad * nx_pad) * sizeof(int));
+	if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
+
 #pragma omp parallel for schedule(static)
 	for (int jj = 0; jj < ny_pad; jj++) {
 		int jj_nx = jj * nx_pad;
@@ -626,10 +626,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
 		tmp_cells_ptr->s7[idx] = 0.0f;
 		tmp_cells_ptr->s8[idx] = 0.0f;
 	}
-
-	/* the map of obstacles */
-	*obstacles_ptr = malloc((ny_pad * nx_pad) * sizeof(int));
-	if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
 	/* initialise densities */
 	float w0 = params->density * 4.f / 9.f;
