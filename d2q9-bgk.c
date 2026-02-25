@@ -602,31 +602,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
 		}
 	}
 
-	// Zero out the padding floats
-	for (int p = 0; p < padding_floats; p++) {
-		int idx = (ny_pad * nx_pad) + p;
-		cells_ptr->s0[idx] = 0.0f;
-		cells_ptr->s1[idx] = 0.0f;
-		cells_ptr->s2[idx] = 0.0f;
-		cells_ptr->s3[idx] = 0.0f;
-		cells_ptr->s4[idx] = 0.0f;
-		cells_ptr->s5[idx] = 0.0f;
-		cells_ptr->s6[idx] = 0.0f;
-		cells_ptr->s7[idx] = 0.0f;
-		cells_ptr->s8[idx] = 0.0f;
-
-		// Touch tmp_cells
-		tmp_cells_ptr->s0[idx] = 0.0f;
-		tmp_cells_ptr->s1[idx] = 0.0f;
-		tmp_cells_ptr->s2[idx] = 0.0f;
-		tmp_cells_ptr->s3[idx] = 0.0f;
-		tmp_cells_ptr->s4[idx] = 0.0f;
-		tmp_cells_ptr->s5[idx] = 0.0f;
-		tmp_cells_ptr->s6[idx] = 0.0f;
-		tmp_cells_ptr->s7[idx] = 0.0f;
-		tmp_cells_ptr->s8[idx] = 0.0f;
-	}
-
 	/* initialise densities */
 	float w0 = params->density * 4.f / 9.f;
 	float w1 = params->density / 9.f;
