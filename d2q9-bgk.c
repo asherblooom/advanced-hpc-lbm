@@ -292,37 +292,102 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 		int ys_nx = y_s * params.nx;
 
 		// left boundary (ii = 0)
-		{
-			int ii = 0;
-			int x_w = params.nx - 1;
-			int x_e = 1;
-			process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
-								t0, t1, t2, t3, t4, t5, t6, t7, t8, obstacles,
-								ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
-		}
+		// {
+		// 	int ii = 0;
+		// 	int x_w = params.nx - 1;
+		// 	int x_e = 1;
+		// 	process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
+		// 						t0, t1, t2, t3, t4, t5, t6, t7, t8, obstacles,
+		// 						ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
+		// }
 
 #pragma omp assume holds(params.nx % 16 == 0)
 #pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64) reduction(+ : tot_u, tot_cells)
 		for (int ii = 1; ii < params.nx - 1; ii++) {
-			// int x_e = (ii + 1) % params.nx;
-			// int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
+			int x_e = (ii + 1) % params.nx;
+			int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
+			int idx = ii + jj_nx;
+			// int x_e = ii + 1;
+			// int x_w = ii - 1;
+			// process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
+			// 					t0, t1, t2, t3, t4, t5, t6, t7, t8, obstacles,
+			// 					ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
 			//
-			int x_e = ii + 1;
-			int x_w = ii - 1;
-			process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
-								t0, t1, t2, t3, t4, t5, t6, t7, t8, obstacles,
-								ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
+			const float w0 = 4.f / 9.f;	 /* weighting factor */
+			const float w1 = 1.f / 9.f;	 /* weighting factor */
+			const float w2 = 1.f / 36.f; /* weighting factor */
+			// c_sq is 1/3, so we can hardcode the inverted fraction
+			const float c_sq_inv_half = 1.5f;  // 1 / (2 * c_sq)
+			// pre-calculate as much as possible
+			const float one_minus_omega = 1.0f - params.omega;
+			const float omega_w0 = params.omega * w0;
+			const float omega_w1 = params.omega * w1;
+			const float omega_w2 = params.omega * w2;
+
+			/* propagate densities from neighbouring cells, following
+	** appropriate directions of travel and writing into
+	** speeds variables */
+			float speeds0 = c0[idx];		 /* central cell, no movement */
+			float speeds1 = c1[x_w + jj_nx]; /* east */
+			float speeds2 = c2[ii + ys_nx];	 /* north */
+			float speeds3 = c3[x_e + jj_nx]; /* west */
+			float speeds4 = c4[ii + yn_nx];	 /* south */
+			float speeds5 = c5[x_w + ys_nx]; /* north-east */
+			float speeds6 = c6[x_e + ys_nx]; /* north-west */
+			float speeds7 = c7[x_e + yn_nx]; /* south-west */
+			float speeds8 = c8[x_w + yn_nx]; /* south-east */
+
+			/* compute local density total */
+			float local_density = speeds0 + speeds1 + speeds2 + speeds3 + speeds4 + speeds5 + speeds6 + speeds7 + speeds8;
+			float inv_density = 1.0f / local_density;  // avoid division
+			/* compute x velocity component */
+			float u_x = (speeds1 + speeds5 + speeds8 - (speeds3 + speeds6 + speeds7)) * inv_density;
+			/* compute y velocity component */
+			float u_y = (speeds2 + speeds5 + speeds6 - (speeds4 + speeds7 + speeds8)) * inv_density;
+			/* velocity squared */
+			float u_sq = u_x * u_x + u_y * u_y;
+			// Pre-calculate common terms
+			float term_sq = u_sq * c_sq_inv_half;
+			float one_minus_term_sq = 1.0f - term_sq;
+			float w0_den_omega = omega_w0 * local_density;
+			float w1_den_omega = omega_w1 * local_density;
+			float w2_den_omega = omega_w2 * local_density;
+
+			float cu1 = 3.0f * u_x;
+			float cu2 = 3.0f * u_y;
+			// Exploit symmetry
+			float cu3 = -cu1;
+			float cu4 = -cu2;
+			float cu5 = cu1 + cu2;
+			float cu6 = -cu1 + cu2;
+			float cu7 = -cu5;
+			float cu8 = -cu6;
+
+			int is_solid = obstacles[idx];
+			// Use ternary operators to avoid big branch in loop body
+			t0[idx] = is_solid ? speeds0 : (speeds0 * one_minus_omega + w0_den_omega * one_minus_term_sq);
+			t1[idx] = is_solid ? speeds3 : (speeds1 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)));
+			t2[idx] = is_solid ? speeds4 : (speeds2 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)));
+			t3[idx] = is_solid ? speeds1 : (speeds3 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)));
+			t4[idx] = is_solid ? speeds2 : (speeds4 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)));
+			t5[idx] = is_solid ? speeds7 : (speeds5 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)));
+			t6[idx] = is_solid ? speeds8 : (speeds6 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)));
+			t7[idx] = is_solid ? speeds5 : (speeds7 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
+			t8[idx] = is_solid ? speeds6 : (speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)));
+
+			tot_u += is_solid ? 0.0f : sqrtf(u_sq);
+			tot_cells += is_solid ? 0 : 1;
 		}
 
 		// right boundary (ii = nx - 1)
-		{
-			int ii = params.nx - 1;
-			int x_w = params.nx - 2;
-			int x_e = 0;
-			process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
-								t0, t1, t2, t3, t4, t5, t6, t7, t8, obstacles,
-								ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
-		}
+		// {
+		// 	int ii = params.nx - 1;
+		// 	int x_w = params.nx - 2;
+		// 	int x_e = 0;
+		// 	process_single_cell(params, c0, c1, c2, c3, c4, c5, c6, c7, c8,
+		// 						t0, t1, t2, t3, t4, t5, t6, t7, t8, obstacles,
+		// 						ii, jj_nx + ii, x_w, x_e, jj_nx, ys_nx, yn_nx, &tot_u, &tot_cells);
+		// }
 	}
 
 	return tot_u / (float)tot_cells;
