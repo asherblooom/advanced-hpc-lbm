@@ -266,7 +266,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	int jj = params.ny - 1;
 	int jj_nx = jj * nx_pad;
 
-#pragma omp assume holds(params.nx % 16 == 0)
+	__builtin_assume(params.nx % 16 == 0);
 #pragma omp simd aligned(c1, c3, c5, c6, c7, c8 : 64)
 	for (int ii = 16; ii < params.nx + 16; ii++) {
 		int idx = ii + jj_nx;
@@ -338,7 +338,7 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 		int ys_nx = (jj - 1) * nx_pad;
 
 		// Because idx = 16 + jj*nx_pad, alignment is preserved!
-#pragma omp assume holds(params.nx % 16 == 0)
+		__builtin_assume(params.nx % 16 == 0);
 #pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64) reduction(+ : tot_u, tot_cells)
 		for (int ii = 16; ii < params.nx + 16; ii++) {
 			int x_e = ii + 1;
