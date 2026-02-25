@@ -233,7 +233,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	int jj = params.ny - 2;
 	int jj_nx = jj * params.nx;
 
-#pragma omp assume holds(params.nx % 16 == 0)
+	__builtin_assume(params.nx % 16 == 0);
 #pragma omp simd aligned(c1, c3, c5, c6, c7, c8 : 64)
 	for (int ii = 0; ii < params.nx; ii++) {
 		int idx = ii + jj_nx;
