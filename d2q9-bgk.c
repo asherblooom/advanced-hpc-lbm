@@ -109,17 +109,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
 float timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles);
 float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
-static inline void process_single_cell(
-	const t_param params,
-	const float* restrict c0, const float* restrict c1, const float* restrict c2,
-	const float* restrict c3, const float* restrict c4, const float* restrict c5,
-	const float* restrict c6, const float* restrict c7, const float* restrict c8,
-	float* restrict t0, float* restrict t1, float* restrict t2,
-	float* restrict t3, float* restrict t4, float* restrict t5,
-	float* restrict t6, float* restrict t7, float* restrict t8,
-	const int* restrict obstacles,
-	int ii, int idx, int x_w, int x_e, int jj_nx, int ys_nx, int yn_nx,
-	float* tot_u, int* tot_cells);
 int write_values(const t_param params, t_speed* cells, int* obstacles, float* av_vels);
 
 /* finalise, including freeing up allocated memory */
@@ -367,20 +356,6 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 	}
 
 	return tot_u / (float)tot_cells;
-	// return EXIT_SUCCESS;
-}
-
-static inline __attribute__((always_inline)) void process_single_cell(
-	const t_param params,
-	const float* restrict c0, const float* restrict c1, const float* restrict c2,
-	const float* restrict c3, const float* restrict c4, const float* restrict c5,
-	const float* restrict c6, const float* restrict c7, const float* restrict c8,
-	float* restrict t0, float* restrict t1, float* restrict t2,
-	float* restrict t3, float* restrict t4, float* restrict t5,
-	float* restrict t6, float* restrict t7, float* restrict t8,
-	const int* restrict obstacles,
-	int ii, int idx, int x_w, int x_e, int jj_nx, int ys_nx, int yn_nx,
-	float* tot_u, int* tot_cells) {
 }
 
 float av_velocity(const t_param params, t_speed* cells, int* obstacles) {
