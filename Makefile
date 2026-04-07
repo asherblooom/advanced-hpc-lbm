@@ -2,7 +2,7 @@
 
 EXE=d2q9-bgk
 
-CC=gcc
+CC=mpicc
 CFLAGS= -std=c11 -Wall -O3 -march=native -ffast-math -fopenmp
 LIBS = -lm
 
