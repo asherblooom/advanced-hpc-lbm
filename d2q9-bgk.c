@@ -550,6 +550,7 @@ float av_velocity(const t_param params, t_speed* cells, int* obstacles) {
 	return global_tot_u / (float)global_tot_cells;
 }
 
+// FIXME: ONLY ONE GUY READS FROM FILES????????????
 int initialise(const char* paramfile, const char* obstaclefile,
 			   t_param* params, t_ranks* ranks, t_buffers* buffers, t_speed* cells_ptr, t_speed* tmp_cells_ptr,
 			   int** obstacles_ptr, float** av_vels_ptr) {

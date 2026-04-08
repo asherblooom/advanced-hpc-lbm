@@ -1,0 +1,21 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-std=c11",
+      "-Wall",
+      "-O3",
+      "-march=native",
+      "-ffast-math",
+      "-fopenmp",
+      "-I/usr/include/openmpi-x86_64",
+      "-o",
+      "d2q9-bgk",
+      "d2q9-bgk.c"
+    ],
+    "directory": "/home/asher/units/hpc/code",
+    "file": "/home/asher/units/hpc/code/d2q9-bgk.c",
+    "output": "/home/asher/units/hpc/code/d2q9-bgk"
+  }
+]
