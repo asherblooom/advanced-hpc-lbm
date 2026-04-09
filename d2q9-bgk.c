@@ -204,10 +204,11 @@ int main(int argc, char* argv[]) {
 		cells = tmp_cells;
 		tmp_cells = swap;
 #ifdef DEBUG
+		float density = total_density(params, cells);
 		if (ranks.rank == 0) {
 			printf("==timestep: %d==\n", tt);
 			printf("av velocity: %.12E\n", av_vels[tt]);
-			printf("tot density: %.12E\n", total_density(params, cells));
+			printf("tot density: %.12E\n", density);
 		}
 #endif
 	}
@@ -225,9 +226,10 @@ int main(int argc, char* argv[]) {
 	tot_toc = col_toc;
 
 	/* write final values and free memory */
+	float reynolds = calc_reynolds(params, &cells, obstacles);
 	if (ranks.rank == 0) {
 		printf("==done==\n");
-		printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, &cells, obstacles));
+		printf("Reynolds number:\t\t%.12E\n", reynolds);
 		printf("Elapsed Init time:\t\t\t%.6lf (s)\n", init_toc - init_tic);
 		printf("Elapsed Compute time:\t\t\t%.6lf (s)\n", comp_toc - comp_tic);
 		printf("Elapsed Collate time:\t\t\t%.6lf (s)\n", col_toc - col_tic);
@@ -321,9 +323,9 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 		// int y_s = (jj == 1) ? (jj + params.ny - 1) : (jj - 1);
 		int y_n = jj + 1;
 		int y_s = jj - 1;
-		int jj_nx = jj * params.local_nx;
-		int yn_nx = y_n * params.local_nx;
-		int ys_nx = y_s * params.local_nx;
+		int jj_nx = jj * (params.local_nx + 2);
+		int yn_nx = y_n * (params.local_nx + 2);
+		int ys_nx = y_s * (params.local_nx + 2);
 
 #pragma omp assume holds(params.local_nx % 16 == 0)
 // #pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64) reduction(+ : tot_u, tot_cells)
@@ -797,9 +799,9 @@ float calc_reynolds(const t_param params, t_speed* cells, int* obstacles) {
 float total_density(const t_param params, t_speed* cells) {
 	float total = 0.f; /* accumulator */
 
-	for (int jj = 0; jj < params.ny; jj++) {
-		for (int ii = 0; ii < params.nx; ii++) {
-			int idx = ii + jj * params.nx;
+	for (int jj = 1; jj < params.local_ny + 1; jj++) {
+		for (int ii = 1; ii < params.local_nx + 1; ii++) {
+			int idx = ii + jj * (params.local_nx + 2);
 			total = cells->s0[idx] + cells->s1[idx] + cells->s2[idx] + cells->s3[idx] + cells->s4[idx] + cells->s5[idx] + cells->s6[idx] + cells->s7[idx] + cells->s8[idx];
 		}
 	}
@@ -811,58 +813,71 @@ float total_density(const t_param params, t_speed* cells) {
 int write_values(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles, float* av_vels) {
 	FILE* fp;					  /* file pointer */
 	const float c_sq = 1.f / 3.f; /* sq. of speed of sound */
-	float local_density;		  /* per grid cell sum of densities */
-	float pressure;				  /* fluid pressure in grid cell */
-	float u_x;					  /* x-component of velocity in grid cell */
-	float u_y;					  /* y-component of velocity in grid cell */
-	float u;					  /* norm--root of summed squares--of u_x and u_y */
+	// float local_density;		  /* per grid cell sum of densities */
+	// float pressure;				  /* fluid pressure in grid cell */
+	// float u_x;					  /* x-component of velocity in grid cell */
+	// float u_y;					  /* y-component of velocity in grid cell */
+	// float u;					  /* norm--root of summed squares--of u_x and u_y */
 
-	fp = fopen(FINALSTATEFILE, "w");
-
-	if (fp == NULL) {
-		die("could not open file output file", __LINE__, __FILE__);
+	if (ranks.rank == 0) {
+		fp = fopen(FINALSTATEFILE, "w");
+		if (fp == NULL) die("could not open file output file", __LINE__, __FILE__);
+		fclose(fp);
 	}
+	for (int turn = 0; turn < ranks.size; turn++) {
+		MPI_Barrier(MPI_COMM_WORLD);
 
-	for (int jj = 0; jj < params.ny; jj++) {
-		for (int ii = 0; ii < params.nx; ii++) {
-			/* an occupied cell */
-			if (obstacles[ii + jj * params.nx]) {
-				u_x = u_y = u = 0.f;
-				pressure = params.density * c_sq;
+		if (ranks.rank == turn) {
+			fp = fopen(FINALSTATEFILE, "a");
+			if (fp == NULL) die("could not open file output file", __LINE__, __FILE__);
+
+			for (int jj = 1; jj < params.local_ny + 1; jj++) {
+				for (int ii = 1; ii < params.local_nx + 1; ii++) {
+					int idx = ii + jj * (params.local_nx + 2);
+
+					int global_x = params.startX + (ii - 1);
+					int global_y = params.startY + (jj - 1);
+
+					float u_x, u_y, u, pressure;
+
+					/* an occupied cell */
+					if (obstacles[idx]) {
+						u_x = u_y = u = 0.f;
+						pressure = params.density * c_sq;
+					}
+					/* no obstacle */
+					else {
+						float local_density = cells->s0[idx] + cells->s1[idx] + cells->s2[idx] + cells->s3[idx] + cells->s4[idx] + cells->s5[idx] + cells->s6[idx] + cells->s7[idx] + cells->s8[idx];
+
+						/* compute x velocity component */
+						u_x = (cells->s1[idx] +
+							   cells->s5[idx] +
+							   cells->s8[idx] -
+							   (cells->s3[idx] +
+								cells->s6[idx] +
+								cells->s7[idx])) /
+							  local_density;
+						/* compute y velocity component */
+						u_y = (cells->s2[idx] +
+							   cells->s5[idx] +
+							   cells->s6[idx] -
+							   (cells->s4[idx] +
+								cells->s7[idx] +
+								cells->s8[idx])) /
+							  local_density;
+						/* compute norm of velocity */
+						u = sqrtf((u_x * u_x) + (u_y * u_y));
+						/* compute pressure */
+						pressure = local_density * c_sq;
+					}
+
+					/* write to file */
+					fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", global_x, global_y, u_x, u_y, u, pressure, obstacles[idx]);
+				}
 			}
-			/* no obstacle */
-			else {
-				int idx = ii + jj * params.nx;
-				local_density = cells->s0[idx] + cells->s1[idx] + cells->s2[idx] + cells->s3[idx] + cells->s4[idx] + cells->s5[idx] + cells->s6[idx] + cells->s7[idx] + cells->s8[idx];
-
-				/* compute x velocity component */
-				u_x = (cells->s1[idx] +
-					   cells->s5[idx] +
-					   cells->s8[idx] -
-					   (cells->s3[idx] +
-						cells->s6[idx] +
-						cells->s7[idx])) /
-					  local_density;
-				/* compute y velocity component */
-				u_y = (cells->s2[idx] +
-					   cells->s5[idx] +
-					   cells->s6[idx] -
-					   (cells->s4[idx] +
-						cells->s7[idx] +
-						cells->s8[idx])) /
-					  local_density;
-				/* compute norm of velocity */
-				u = sqrtf((u_x * u_x) + (u_y * u_y));
-				/* compute pressure */
-				pressure = local_density * c_sq;
-			}
-
-			/* write to file */
-			fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", ii, jj, u_x, u_y, u, pressure, obstacles[ii + params.nx * jj]);
+			fclose(fp);
 		}
 	}
-
-	fclose(fp);
 
 	// FIXME: USE MPI_Allreduce ONLY ONCE HERE!!!!!!!!!!!!!!!!!!
 	if (ranks.rank == 0) {
