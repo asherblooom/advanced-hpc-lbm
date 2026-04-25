@@ -666,6 +666,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	const int padding_floats = 16;
 	int grid_size_sq = (params->local_nx + 2) * (params->local_ny + 2);	 // add halo spaces
 	int stride_floats = grid_size_sq + padding_floats;
+	// ensure stride floats (and as such total_bytes) is a multiple of 16 (64 bytes)
+	stride_floats = (stride_floats + 15) & ~15;
 	// Allocate one contiguous block for all 9 speeds
 	int total_bytes = stride_floats * 9 * sizeof(float);
 
