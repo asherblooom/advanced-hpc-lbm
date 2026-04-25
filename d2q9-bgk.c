@@ -85,6 +85,7 @@ typedef struct
 	int e_rank;
 	int n_rank;
 	int s_rank;
+	MPI_Comm cart_comm;
 } t_ranks;
 
 typedef struct
@@ -137,7 +138,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 */
 float timestep(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles);
-float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
+float timestep_merged(const t_param params, const t_ranks ranks, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells);
 int write_values(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles, float* av_vels);
 
@@ -147,13 +148,13 @@ int finalise(const t_param* params, t_buffers* buffers, t_speed* cells_ptr, t_sp
 
 /* Sum all the densities in the grid.
 ** The total should remain constant from one timestep to the next. */
-float total_density(const t_param params, t_speed* cells);
+float total_density(const t_param params, const t_ranks ranks, t_speed* cells);
 
 /* compute average velocity */
-float av_velocity(const t_param params, t_speed* cells, int* obstacles);
+float av_velocity(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles);
 
 /* calculate Reynolds number */
-float calc_reynolds(const t_param params, t_speed* cells, int* obstacles);
+float calc_reynolds(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles);
 
 /* utility functions */
 void die(const char* message, const int line, const char* file);
@@ -226,7 +227,7 @@ int main(int argc, char* argv[]) {
 	tot_toc = col_toc;
 
 	/* write final values and free memory */
-	float reynolds = calc_reynolds(params, &cells, obstacles);
+	float reynolds = calc_reynolds(params, ranks, &cells, obstacles);
 	if (ranks.rank == 0) {
 		printf("==done==\n");
 		printf("Reynolds number:\t\t%.12E\n", reynolds);
@@ -245,7 +246,7 @@ int main(int argc, char* argv[]) {
 float timestep(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
 	accelerate_flow(params, cells, obstacles);
 	exchange_halos(params, ranks, buffers, cells);
-	return timestep_merged(params, cells, tmp_cells, obstacles);
+	return timestep_merged(params, ranks, cells, tmp_cells, obstacles);
 }
 
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
@@ -291,7 +292,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	return EXIT_SUCCESS;
 }
 
-float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
+float timestep_merged(const t_param params, const t_ranks ranks, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
 	const float* restrict c0 = cells->s0;
 	const float* restrict c1 = cells->s1;
 	const float* restrict c2 = cells->s2;
@@ -404,8 +405,8 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 	}
 	float global_tot_u = 0.0f;
 	int global_tot_cells = 0;
-	MPI_Allreduce(&tot_u, &global_tot_u, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-	MPI_Allreduce(&tot_cells, &global_tot_cells, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+	MPI_Allreduce(&tot_u, &global_tot_u, 1, MPI_FLOAT, MPI_SUM, ranks.cart_comm);
+	MPI_Allreduce(&tot_cells, &global_tot_cells, 1, MPI_INT, MPI_SUM, ranks.cart_comm);
 
 	return global_tot_u / (float)global_tot_cells;
 }
@@ -434,11 +435,11 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 	// Exchange X
 	MPI_Sendrecv(buffers->send_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 0,
 				 buffers->recv_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 0,
-				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				 ranks.cart_comm, MPI_STATUS_IGNORE);
 
 	MPI_Sendrecv(buffers->send_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 1,
 				 buffers->recv_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 1,
-				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				 ranks.cart_comm, MPI_STATUS_IGNORE);
 
 	// Unpack X
 	for (int jj = 1; jj <= params.local_ny; jj++) {
@@ -479,11 +480,11 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 	// Exchange Y
 	MPI_Sendrecv(buffers->send_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 2,
 				 buffers->recv_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 2,
-				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				 ranks.cart_comm, MPI_STATUS_IGNORE);
 
 	MPI_Sendrecv(buffers->send_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 3,
 				 buffers->recv_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 3,
-				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				 ranks.cart_comm, MPI_STATUS_IGNORE);
 
 	// Unpack Y
 	for (int ii = 0; ii <= params.local_nx + 1; ii++) {
@@ -503,7 +504,7 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 	}
 }
 
-float av_velocity(const t_param params, t_speed* cells, int* obstacles) {
+float av_velocity(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles) {
 	int tot_cells = 0; /* no. of cells used in calculation */
 	float tot_u;	   /* accumulated magnitudes of velocity for each cell */
 
@@ -546,8 +547,8 @@ float av_velocity(const t_param params, t_speed* cells, int* obstacles) {
 
 	float global_tot_u = 0.0f;
 	int global_tot_cells = 0;
-	MPI_Allreduce(&tot_u, &global_tot_u, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-	MPI_Allreduce(&tot_cells, &global_tot_cells, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+	MPI_Allreduce(&tot_u, &global_tot_u, 1, MPI_FLOAT, MPI_SUM, ranks.cart_comm);
+	MPI_Allreduce(&tot_cells, &global_tot_cells, 1, MPI_INT, MPI_SUM, ranks.cart_comm);
 
 	return global_tot_u / (float)global_tot_cells;
 }
@@ -622,31 +623,39 @@ int initialise(const char* paramfile, const char* obstaclefile,
   */
 
 	MPI_Comm_size(MPI_COMM_WORLD, &ranks->size);
-	MPI_Comm_rank(MPI_COMM_WORLD, &ranks->rank);
 
-	int p_dim = round(sqrt(ranks->size));
-	// check if the number of ranks is a perfect square
-	if (p_dim * p_dim != ranks->size) {
-		printf("Number of MPI ranks (%d) is not a perfect square. Cannot make square blocks!\n", ranks->size);
-		return EXIT_FAILURE;
-	}
-	// check if the grid perfectly divides into this processor grid
-	else if (params->nx % p_dim != 0) {
-		printf("Grid dimension (%d) is not divisible by processor grid dimension (%d)!\n", params->nx, p_dim);
-		return EXIT_FAILURE;
-	}
+	// 1. Let MPI calculate the optimal 2D grid of processors
+	int dims[2] = {0, 0};
+	MPI_Dims_create(ranks->size, 2, dims);
+	int ranks_x = dims[0];
+	int ranks_y = dims[1];
 
-	int rank_x = ranks->rank % p_dim;
-	int rank_y = ranks->rank / p_dim;
-	ranks->w_rank = (rank_x == 0) ? (ranks->rank + p_dim - 1) : (ranks->rank - 1);
-	ranks->e_rank = (rank_x == p_dim - 1) ? (ranks->rank - p_dim + 1) : (ranks->rank + 1);
-	ranks->s_rank = (rank_y == 0) ? (ranks->rank + ranks->size - p_dim) : (ranks->rank - p_dim);
-	ranks->n_rank = (rank_y == p_dim - 1) ? (ranks->rank - ranks->size + p_dim) : (ranks->rank + p_dim);
+	// 2. Create the Cartesian communicator
+	int periods[2] = {1, 1};  // 1 = wrap-around periodic boundaries
+	int reorder = 1;		  // Allow MPI to reorder ranks for hardware optimization
+	MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &ranks->cart_comm);
 
-	params->local_nx = params->nx / p_dim;
-	params->local_ny = params->ny / p_dim;
-	params->startX = (ranks->rank * params->local_nx) % params->nx;
-	params->startY = ((ranks->rank * params->local_nx) / params->nx) * params->local_ny;
+	// 3. Get the new rank in the cartesian communicator (in case reorder changed it)
+	MPI_Comm_rank(ranks->cart_comm, &ranks->rank);
+
+	// 4. Get 2D coordinates in the processor grid
+	int coords[2];
+	MPI_Cart_coords(ranks->cart_comm, ranks->rank, 2, coords);
+	int rank_x = coords[0];
+	int rank_y = coords[1];
+
+	// 5. Automatically find neighbor ranks
+	// Shift along X-axis (dimension 0)
+	MPI_Cart_shift(ranks->cart_comm, 0, 1, &ranks->w_rank, &ranks->e_rank);
+	// Shift along Y-axis (dimension 1)
+	MPI_Cart_shift(ranks->cart_comm, 1, 1, &ranks->s_rank, &ranks->n_rank);
+
+	// 6. Calculate local grid boundaries (handles uneven division gracefully)
+	params->startX = (params->nx * rank_x) / ranks_x;
+	params->local_nx = (params->nx * (rank_x + 1)) / ranks_x - params->startX;
+
+	params->startY = (params->ny * rank_y) / ranks_y;
+	params->local_ny = (params->ny * (rank_y + 1)) / ranks_y - params->startY;
 
 	//sending/receiving 3 speeds
 	buffers->x_buf_size = params->local_ny * 3;
@@ -792,13 +801,13 @@ int finalise(const t_param* params, t_buffers* buffers, t_speed* cells_ptr, t_sp
 	return EXIT_SUCCESS;
 }
 
-float calc_reynolds(const t_param params, t_speed* cells, int* obstacles) {
+float calc_reynolds(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles) {
 	const float viscosity = 1.f / 6.f * (2.f / params.omega - 1.f);
 
-	return av_velocity(params, cells, obstacles) * params.reynolds_dim / viscosity;
+	return av_velocity(params, ranks, cells, obstacles) * params.reynolds_dim / viscosity;
 }
 
-float total_density(const t_param params, t_speed* cells) {
+float total_density(const t_param params, const t_ranks ranks, t_speed* cells) {
 	float total = 0.f; /* accumulator */
 
 	for (int jj = 1; jj < params.local_ny + 1; jj++) {
@@ -808,7 +817,7 @@ float total_density(const t_param params, t_speed* cells) {
 		}
 	}
 	float global_total = 0.f;
-	MPI_Allreduce(&total, &global_total, 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+	MPI_Allreduce(&total, &global_total, 1, MPI_FLOAT, MPI_SUM, ranks.cart_comm);
 	return global_total;
 }
 
