@@ -267,7 +267,8 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	int jj = (params.ny - 2) - params.startY + 1;
 	int jj_nx = jj * (params.local_nx + 2);
 
-	__builtin_assume(params.local_nx % 16 == 0);
+	// removed because MPI_Dims_create might divide grid into chunks that aren't perfectly divisible by 16
+	// __builtin_assume(params.local_nx % 16 == 0);
 // #pragma omp simd aligned(c1, c3, c5, c6, c7, c8 : 64)
 #pragma omp simd
 	for (int ii = 1; ii < params.local_nx + 1; ii++) {
@@ -328,7 +329,8 @@ float timestep_merged(const t_param params, const t_ranks ranks, t_speed* cells,
 		int yn_nx = y_n * (params.local_nx + 2);
 		int ys_nx = y_s * (params.local_nx + 2);
 
-		__builtin_assume(params.local_nx % 16 == 0);
+		// removed because MPI_Dims_create might divide grid into chunks that aren't perfectly divisible by 16
+		// __builtin_assume(params.local_nx % 16 == 0);
 // #pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64) reduction(+ : tot_u, tot_cells)
 #pragma omp simd reduction(+ : tot_u, tot_cells)
 		for (int ii = 1; ii < params.local_nx + 1; ii++) {
@@ -624,33 +626,33 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
 	MPI_Comm_size(MPI_COMM_WORLD, &ranks->size);
 
-	// 1. Let MPI calculate the optimal 2D grid of processors
+	// Let MPI calculate the optimal 2D grid of processors
 	int dims[2] = {0, 0};
 	MPI_Dims_create(ranks->size, 2, dims);
 	int ranks_x = dims[0];
 	int ranks_y = dims[1];
 
-	// 2. Create the Cartesian communicator
+	// Create the Cartesian communicator
 	int periods[2] = {1, 1};  // 1 = wrap-around periodic boundaries
 	int reorder = 1;		  // Allow MPI to reorder ranks for hardware optimization
 	MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &ranks->cart_comm);
 
-	// 3. Get the new rank in the cartesian communicator (in case reorder changed it)
+	// Get the rank in the cartesian communicator
 	MPI_Comm_rank(ranks->cart_comm, &ranks->rank);
 
-	// 4. Get 2D coordinates in the processor grid
+	// Get 2D coordinates in the processor grid
 	int coords[2];
 	MPI_Cart_coords(ranks->cart_comm, ranks->rank, 2, coords);
 	int rank_x = coords[0];
 	int rank_y = coords[1];
 
-	// 5. Automatically find neighbor ranks
+	// Automatically find neighbor ranks
 	// Shift along X-axis (dimension 0)
 	MPI_Cart_shift(ranks->cart_comm, 0, 1, &ranks->w_rank, &ranks->e_rank);
 	// Shift along Y-axis (dimension 1)
 	MPI_Cart_shift(ranks->cart_comm, 1, 1, &ranks->s_rank, &ranks->n_rank);
 
-	// 6. Calculate local grid boundaries (handles uneven division gracefully)
+	// Calculate local grid boundaries (handles uneven division gracefully)
 	params->startX = (params->nx * rank_x) / ranks_x;
 	params->local_nx = (params->nx * (rank_x + 1)) / ranks_x - params->startX;
 
@@ -836,7 +838,7 @@ int write_values(const t_param params, const t_ranks ranks, t_speed* cells, int*
 		fclose(fp);
 	}
 	for (int turn = 0; turn < ranks.size; turn++) {
-		MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Barrier(ranks.cart_comm);
 
 		if (ranks.rank == turn) {
 			fp = fopen(FINALSTATEFILE, "a");
