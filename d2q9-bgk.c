@@ -411,96 +411,62 @@ float timestep_merged(const t_param params, t_speed* cells, t_speed* tmp_cells, 
 }
 
 void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells) {
-	// X-Axis Exchange (Left <--> Right)
+	int row_size = params.local_nx + 2;
 
-	// Pack X
+	// ---------------------------------------------------------
+	// 1. X-AXIS: LOCAL MEMORY COPY (Periodic Boundary Wrap)
+	// ---------------------------------------------------------
 	for (int jj = 1; jj <= params.local_ny; jj++) {
-		int i_left = 1 + jj * (params.local_nx + 2);				 // Leftmost internal cell
-		int i_right = params.local_nx + jj * (params.local_nx + 2);	 // Rightmost internal cell
-		// subtract 1 to start from 0. Multiply by 3 because we are packing 3 speeds into each array section
-		int b_idx = (jj - 1) * 3;
+		int row_start = jj * row_size;
 
-		// Going West: speeds 3 (W), 6 (NW), 7 (SW)
-		buffers->send_west[b_idx + 0] = cells->s3[i_left];
-		buffers->send_west[b_idx + 1] = cells->s6[i_left];
-		buffers->send_west[b_idx + 2] = cells->s7[i_left];
+		// East-moving particles (1, 5, 8) flowing out the right edge (local_nx) enter the left halo (0)
+		cells->s1[0 + row_start] = cells->s1[params.local_nx + row_start];
+		cells->s5[0 + row_start] = cells->s5[params.local_nx + row_start];
+		cells->s8[0 + row_start] = cells->s8[params.local_nx + row_start];
 
-		// Going East: speeds 1 (E), 5 (NE), 8 (SE)
-		buffers->send_east[b_idx + 0] = cells->s1[i_right];
-		buffers->send_east[b_idx + 1] = cells->s5[i_right];
-		buffers->send_east[b_idx + 2] = cells->s8[i_right];
+		// West-moving particles (3, 6, 7) flowing out the left edge (1) enter the right halo (local_nx + 1)
+		cells->s3[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
+		cells->s6[params.local_nx + 1 + row_start] = cells->s6[1 + row_start];
+		cells->s7[params.local_nx + 1 + row_start] = cells->s7[1 + row_start];
 	}
 
-	// Exchange X
-	MPI_Sendrecv(buffers->send_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 0,
-				 buffers->recv_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 0,
+	// ---------------------------------------------------------
+	// 2. Y-AXIS: DIRECT MPI SEND/RECV (No Packing Required!)
+	// ---------------------------------------------------------
+	// Calculate the starting index of the rows we are sending/receiving
+	int bot_inner_row = 1 * row_size;
+	int bot_halo_row = 0 * row_size;
+
+	int top_inner_row = params.local_ny * row_size;
+	int top_halo_row = (params.local_ny + 1) * row_size;
+
+	// Send South (Down), Receive from North (Up)
+	// Speeds 4, 7, 8 travel South
+	MPI_Sendrecv(&cells->s4[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 0,
+				 &cells->s4[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 0,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	MPI_Sendrecv(buffers->send_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 1,
-				 buffers->recv_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 1,
+	MPI_Sendrecv(&cells->s7[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 1,
+				 &cells->s7[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 1,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	// Unpack X
-	for (int jj = 1; jj <= params.local_ny; jj++) {
-		int h_left = 0 + jj * (params.local_nx + 2);					   // West halo
-		int h_right = (params.local_nx + 1) + jj * (params.local_nx + 2);  // East halo
-		int b_idx = (jj - 1) * 3;
-
-		// Received from East, placing in Right halo
-		cells->s3[h_right] = buffers->recv_east[b_idx + 0];
-		cells->s6[h_right] = buffers->recv_east[b_idx + 1];
-		cells->s7[h_right] = buffers->recv_east[b_idx + 2];
-
-		// Received from West, placing in Left halo
-		cells->s1[h_left] = buffers->recv_west[b_idx + 0];
-		cells->s5[h_left] = buffers->recv_west[b_idx + 1];
-		cells->s8[h_left] = buffers->recv_west[b_idx + 2];
-	}
-
-	// Y-Axis Exchange (Down <--> Up)
-
-	// Pack Y (Cols 0 to nx+1 - this includes x-halos for corners)
-	for (int ii = 0; ii <= params.local_nx + 1; ii++) {
-		int i_down = ii + 1 * (params.local_nx + 2);			  // Bottommost internal cell
-		int i_up = ii + params.local_ny * (params.local_nx + 2);  // Topmost internal cell
-		int b_idx = ii * 3;
-
-		// Going South: speeds 4 (S), 7 (SW), 8 (SE)
-		buffers->send_south[b_idx + 0] = cells->s4[i_down];
-		buffers->send_south[b_idx + 1] = cells->s7[i_down];
-		buffers->send_south[b_idx + 2] = cells->s8[i_down];
-
-		// Going North: speeds 2 (N), 5 (NE), 6 (NW)
-		buffers->send_north[b_idx + 0] = cells->s2[i_up];
-		buffers->send_north[b_idx + 1] = cells->s5[i_up];
-		buffers->send_north[b_idx + 2] = cells->s6[i_up];
-	}
-
-	// Exchange Y
-	MPI_Sendrecv(buffers->send_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 2,
-				 buffers->recv_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 2,
+	MPI_Sendrecv(&cells->s8[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 2,
+				 &cells->s8[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 2,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	MPI_Sendrecv(buffers->send_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 3,
-				 buffers->recv_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 3,
+	// Send North (Up), Receive from South (Down)
+	// Speeds 2, 5, 6 travel North
+	MPI_Sendrecv(&cells->s2[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 3,
+				 &cells->s2[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 3,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	// Unpack Y
-	for (int ii = 0; ii <= params.local_nx + 1; ii++) {
-		int h_down = ii + 0 * (params.local_nx + 2);					// South halo
-		int h_up = ii + (params.local_ny + 1) * (params.local_nx + 2);	// North halo
-		int b_idx = ii * 3;
+	MPI_Sendrecv(&cells->s5[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 4,
+				 &cells->s5[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 4,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-		// Received from North, placing in Top halo
-		cells->s4[h_up] = buffers->recv_north[b_idx + 0];
-		cells->s7[h_up] = buffers->recv_north[b_idx + 1];
-		cells->s8[h_up] = buffers->recv_north[b_idx + 2];
-
-		// Received from South, placing in Bottom halo
-		cells->s2[h_down] = buffers->recv_south[b_idx + 0];
-		cells->s5[h_down] = buffers->recv_south[b_idx + 1];
-		cells->s6[h_down] = buffers->recv_south[b_idx + 2];
-	}
+	MPI_Sendrecv(&cells->s6[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 5,
+				 &cells->s6[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 5,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 
 float av_velocity(const t_param params, t_speed* cells, int* obstacles) {
