@@ -420,14 +420,26 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 		int row_start = jj * row_size;
 
 		// East-moving particles (1, 5, 8) flowing out the right edge (local_nx) enter the left halo (0)
+		cells->s0[0 + row_start] = cells->s1[params.local_nx + row_start];
 		cells->s1[0 + row_start] = cells->s1[params.local_nx + row_start];
+		cells->s2[0 + row_start] = cells->s1[params.local_nx + row_start];
+		cells->s3[0 + row_start] = cells->s1[params.local_nx + row_start];
+		cells->s4[0 + row_start] = cells->s1[params.local_nx + row_start];
 		cells->s5[0 + row_start] = cells->s5[params.local_nx + row_start];
+		cells->s6[0 + row_start] = cells->s1[params.local_nx + row_start];
+		cells->s7[0 + row_start] = cells->s1[params.local_nx + row_start];
 		cells->s8[0 + row_start] = cells->s8[params.local_nx + row_start];
 
 		// West-moving particles (3, 6, 7) flowing out the left edge (1) enter the right halo (local_nx + 1)
+		cells->s0[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
+		cells->s1[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
+		cells->s2[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
 		cells->s3[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
+		cells->s4[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
+		cells->s5[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
 		cells->s6[params.local_nx + 1 + row_start] = cells->s6[1 + row_start];
 		cells->s7[params.local_nx + 1 + row_start] = cells->s7[1 + row_start];
+		cells->s8[params.local_nx + 1 + row_start] = cells->s3[1 + row_start];
 	}
 
 	// ---------------------------------------------------------
@@ -442,30 +454,66 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 
 	// Send South (Down), Receive from North (Up)
 	// Speeds 4, 7, 8 travel South
-	MPI_Sendrecv(&cells->s4[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 0,
-				 &cells->s4[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 0,
+	MPI_Sendrecv(&cells->s0[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 0,
+				 &cells->s0[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 0,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s1[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 1,
+				 &cells->s1[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 1,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s2[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 2,
+				 &cells->s2[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 2,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s3[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 3,
+				 &cells->s3[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 3,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s4[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 4,
+				 &cells->s4[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 4,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s5[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 5,
+				 &cells->s5[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 5,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s6[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 6,
+				 &cells->s6[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 6,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	MPI_Sendrecv(&cells->s7[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 1,
-				 &cells->s7[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 1,
+	MPI_Sendrecv(&cells->s7[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 7,
+				 &cells->s7[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 7,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	MPI_Sendrecv(&cells->s8[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 2,
-				 &cells->s8[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 2,
+	MPI_Sendrecv(&cells->s8[bot_inner_row], row_size, MPI_FLOAT, ranks.s_rank, 8,
+				 &cells->s8[top_halo_row], row_size, MPI_FLOAT, ranks.n_rank, 8,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 	// Send North (Up), Receive from South (Down)
 	// Speeds 2, 5, 6 travel North
-	MPI_Sendrecv(&cells->s2[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 3,
-				 &cells->s2[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 3,
+	MPI_Sendrecv(&cells->s0[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 9,
+				 &cells->s0[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 9,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s1[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 10,
+				 &cells->s1[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 10,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s2[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 11,
+				 &cells->s2[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 11,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s3[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 12,
+				 &cells->s3[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 12,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s4[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 13,
+				 &cells->s4[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 13,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	MPI_Sendrecv(&cells->s5[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 4,
-				 &cells->s5[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 4,
+	MPI_Sendrecv(&cells->s5[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 14,
+				 &cells->s5[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 14,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	MPI_Sendrecv(&cells->s6[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 5,
-				 &cells->s6[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 5,
+	MPI_Sendrecv(&cells->s6[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 15,
+				 &cells->s6[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 15,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s7[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 16,
+				 &cells->s7[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 16,
+				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Sendrecv(&cells->s8[top_inner_row], row_size, MPI_FLOAT, ranks.n_rank, 17,
+				 &cells->s8[bot_halo_row], row_size, MPI_FLOAT, ranks.s_rank, 17,
 				 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 
