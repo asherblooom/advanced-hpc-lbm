@@ -137,9 +137,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
 ** accelerate_flow() & timestep_merged()
 */
 float timestep(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, t_speed* tmp_cells, int* obstacles);
+
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles);
-float timestep_merged(const t_param params, const t_ranks ranks, t_speed* cells, t_speed* tmp_cells, int* obstacles);
-void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells);
+void start_halo_exchange_X(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, MPI_Request* reqs_X);
+void timestep_merged_interior(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells);
+void wait_X_start_Y(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, MPI_Request* reqs_X, MPI_Request* reqs_Y);
+void timestep_merged_left_right(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells);
+void wait_halo_exchange_Y(const t_param params, t_buffers* buffers, t_speed* cells, MPI_Request* reqs_Y);
+void timestep_merged_top_bottom(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells);
+
 int write_values(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles, float* av_vels);
 
 /* finalise, including freeing up allocated memory */
@@ -244,9 +250,35 @@ int main(int argc, char* argv[]) {
 }
 
 float timestep(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
+	MPI_Request reqs_x[4];
+	MPI_Request reqs_y[4];
+	float local_tot_u = 0.0f;
+	int local_tot_cells = 0;
+
 	accelerate_flow(params, cells, obstacles);
-	exchange_halos(params, ranks, buffers, cells);
-	return timestep_merged(params, ranks, cells, tmp_cells, obstacles);
+
+	start_halo_exchange_X(params, ranks, buffers, cells, reqs_x);
+
+	timestep_merged_interior(params, cells, tmp_cells, obstacles, &local_tot_u, &local_tot_cells);
+
+	// 3. Wait for X, Unpack X, Pack Y, Kick off Y-axis communication
+	wait_X_start_Y(params, ranks, buffers, cells, reqs_x, reqs_y);
+
+	// 4. Compute Left and Right columns (they only depend on X, which is finished)
+	timestep_merged_left_right(params, cells, tmp_cells, obstacles, &local_tot_u, &local_tot_cells);
+
+	// 5. Wait for Y, Unpack Y
+	wait_halo_exchange_Y(params, buffers, cells, reqs_y);
+
+	// 6. Compute Top and Bottom rows (Y is finished)
+	timestep_merged_top_bottom(params, cells, tmp_cells, obstacles, &local_tot_u, &local_tot_cells);
+
+	float global_tot_u = 0.0f;
+	int global_tot_cells = 0;
+	MPI_Allreduce(&local_tot_u, &global_tot_u, 1, MPI_FLOAT, MPI_SUM, ranks.cart_comm);
+	MPI_Allreduce(&local_tot_cells, &global_tot_cells, 1, MPI_INT, MPI_SUM, ranks.cart_comm);
+
+	return global_tot_u / (float)global_tot_cells;
 }
 
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
@@ -293,7 +325,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	return EXIT_SUCCESS;
 }
 
-float timestep_merged(const t_param params, const t_ranks ranks, t_speed* cells, t_speed* tmp_cells, int* obstacles) {
+void timestep_merged_interior(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells) {
 	const float* restrict c0 = cells->s0;
 	const float* restrict c1 = cells->s1;
 	const float* restrict c2 = cells->s2;
@@ -314,28 +346,18 @@ float timestep_merged(const t_param params, const t_ranks ranks, t_speed* cells,
 	float* restrict t7 = tmp_cells->s7;
 	float* restrict t8 = tmp_cells->s8;
 
-	// av_velocity variables
-	int tot_cells = 0; /* no. of cells used in calculation */
-	float tot_u = 0;   /* accumulated magnitudes of velocity for each cell */
-
-	/* loop over _all_ cells */
-	for (int jj = 1; jj < params.local_ny + 1; jj++) {
-		// these dont rely on ii, so calculate them here
-		// int y_n = (jj + 1) % params.ny;
-		// int y_s = (jj == 1) ? (jj + params.ny - 1) : (jj - 1);
+	for (int jj = 2; jj < params.local_ny; jj++) {
 		int y_n = jj + 1;
 		int y_s = jj - 1;
 		int jj_nx = jj * (params.local_nx + 2);
 		int yn_nx = y_n * (params.local_nx + 2);
 		int ys_nx = y_s * (params.local_nx + 2);
 
-		// removed because MPI_Dims_create might divide grid into chunks that aren't perfectly divisible by 16
-		// __builtin_assume(params.local_nx % 16 == 0);
-// #pragma omp simd aligned(c0, c1, c2, c3, c4, c5, c6, c7, c8, t0, t1, t2, t3, t4, t5, t6, t7, t8 : 64) reduction(+ : tot_u, tot_cells)
-#pragma omp simd reduction(+ : tot_u, tot_cells)
-		for (int ii = 1; ii < params.local_nx + 1; ii++) {
-			// int x_e = (ii + 1) % params.nx;
-			// int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
+		float row_tot_u = 0.0f;
+		int row_tot_cells = 0;
+
+#pragma omp simd reduction(+ : row_tot_u, row_tot_cells)
+		for (int ii = 2; ii < params.local_nx; ii++) {
 			int x_e = ii + 1;
 			int x_w = ii - 1;
 			int idx = ii + jj_nx;
@@ -401,22 +423,235 @@ float timestep_merged(const t_param params, const t_ranks ranks, t_speed* cells,
 			t7[idx] = is_solid ? speeds5 : (speeds7 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
 			t8[idx] = is_solid ? speeds6 : (speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)));
 
-			tot_u += is_solid ? 0.0f : sqrtf(u_sq);
-			tot_cells += is_solid ? 0 : 1;
+			row_tot_u += is_solid ? 0.0f : sqrtf(u_sq);
+			row_tot_cells += is_solid ? 0 : 1;
 		}
+		// Accumulate into the pointers passed from the main wrapper
+		*local_tot_u += row_tot_u;
+		*local_tot_cells += row_tot_cells;
 	}
-	float global_tot_u = 0.0f;
-	int global_tot_cells = 0;
-	MPI_Allreduce(&tot_u, &global_tot_u, 1, MPI_FLOAT, MPI_SUM, ranks.cart_comm);
-	MPI_Allreduce(&tot_cells, &global_tot_cells, 1, MPI_INT, MPI_SUM, ranks.cart_comm);
-
-	return global_tot_u / (float)global_tot_cells;
 }
 
-void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells) {
-	// X-Axis Exchange (Left <--> Right)
+void timestep_merged_left_right(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells) {
+	const float* restrict c0 = cells->s0;
+	const float* restrict c1 = cells->s1;
+	const float* restrict c2 = cells->s2;
+	const float* restrict c3 = cells->s3;
+	const float* restrict c4 = cells->s4;
+	const float* restrict c5 = cells->s5;
+	const float* restrict c6 = cells->s6;
+	const float* restrict c7 = cells->s7;
+	const float* restrict c8 = cells->s8;
 
-	// Pack X
+	float* restrict t0 = tmp_cells->s0;
+	float* restrict t1 = tmp_cells->s1;
+	float* restrict t2 = tmp_cells->s2;
+	float* restrict t3 = tmp_cells->s3;
+	float* restrict t4 = tmp_cells->s4;
+	float* restrict t5 = tmp_cells->s5;
+	float* restrict t6 = tmp_cells->s6;
+	float* restrict t7 = tmp_cells->s7;
+	float* restrict t8 = tmp_cells->s8;
+
+	for (int jj = 2; jj < params.local_ny; jj++) {
+		int y_n = jj + 1;
+		int y_s = jj - 1;
+		int jj_nx = jj * (params.local_nx + 2);
+		int yn_nx = y_n * (params.local_nx + 2);
+		int ys_nx = y_s * (params.local_nx + 2);
+
+		int edge_x[] = {1, params.local_nx};
+
+		float row_tot_u = 0.0f;
+		int row_tot_cells = 0;
+
+		for (int e = 0; e < 2; e++) {
+			int ii = edge_x[e];
+
+			int x_e = ii + 1;
+			int x_w = ii - 1;
+			int idx = ii + jj_nx;
+			const float w0 = 4.f / 9.f;	 /* weighting factor */
+			const float w1 = 1.f / 9.f;	 /* weighting factor */
+			const float w2 = 1.f / 36.f; /* weighting factor */
+			// c_sq is 1/3, so we can hardcode the inverted fraction
+			const float c_sq_inv_half = 1.5f;  // 1 / (2 * c_sq)
+			// pre-calculate as much as possible
+			const float one_minus_omega = 1.0f - params.omega;
+			const float omega_w0 = params.omega * w0;
+			const float omega_w1 = params.omega * w1;
+			const float omega_w2 = params.omega * w2;
+
+			/* propagate densities from neighbouring cells, following
+			** appropriate directions of travel and writing into
+			** speeds variables */
+			float speeds0 = c0[idx];		 /* central cell, no movement */
+			float speeds1 = c1[x_w + jj_nx]; /* east */
+			float speeds2 = c2[ii + ys_nx];	 /* north */
+			float speeds3 = c3[x_e + jj_nx]; /* west */
+			float speeds4 = c4[ii + yn_nx];	 /* south */
+			float speeds5 = c5[x_w + ys_nx]; /* north-east */
+			float speeds6 = c6[x_e + ys_nx]; /* north-west */
+			float speeds7 = c7[x_e + yn_nx]; /* south-west */
+			float speeds8 = c8[x_w + yn_nx]; /* south-east */
+
+			/* compute local density total */
+			float local_density = speeds0 + speeds1 + speeds2 + speeds3 + speeds4 + speeds5 + speeds6 + speeds7 + speeds8;
+			float inv_density = 1.0f / local_density;  // avoid division
+			/* compute x velocity component */
+			float u_x = (speeds1 + speeds5 + speeds8 - (speeds3 + speeds6 + speeds7)) * inv_density;
+			/* compute y velocity component */
+			float u_y = (speeds2 + speeds5 + speeds6 - (speeds4 + speeds7 + speeds8)) * inv_density;
+			/* velocity squared */
+			float u_sq = u_x * u_x + u_y * u_y;
+			// Pre-calculate common terms
+			float term_sq = u_sq * c_sq_inv_half;
+			float one_minus_term_sq = 1.0f - term_sq;
+			float w0_den_omega = omega_w0 * local_density;
+			float w1_den_omega = omega_w1 * local_density;
+			float w2_den_omega = omega_w2 * local_density;
+
+			float cu1 = 3.0f * u_x;
+			float cu2 = 3.0f * u_y;
+			// Exploit symmetry
+			float cu3 = -cu1;
+			float cu4 = -cu2;
+			float cu5 = cu1 + cu2;
+			float cu6 = -cu1 + cu2;
+			float cu7 = -cu5;
+			float cu8 = -cu6;
+
+			int is_solid = obstacles[idx];
+			// Use ternary operators to avoid big branch in loop body
+			t0[idx] = is_solid ? speeds0 : (speeds0 * one_minus_omega + w0_den_omega * one_minus_term_sq);
+			t1[idx] = is_solid ? speeds3 : (speeds1 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)));
+			t2[idx] = is_solid ? speeds4 : (speeds2 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)));
+			t3[idx] = is_solid ? speeds1 : (speeds3 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)));
+			t4[idx] = is_solid ? speeds2 : (speeds4 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)));
+			t5[idx] = is_solid ? speeds7 : (speeds5 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)));
+			t6[idx] = is_solid ? speeds8 : (speeds6 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)));
+			t7[idx] = is_solid ? speeds5 : (speeds7 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
+			t8[idx] = is_solid ? speeds6 : (speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)));
+
+			row_tot_u += is_solid ? 0.0f : sqrtf(u_sq);
+			row_tot_cells += is_solid ? 0 : 1;
+		}
+		*local_tot_u += row_tot_u;
+		*local_tot_cells += row_tot_cells;
+	}
+}
+
+void timestep_merged_top_bottom(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells) {
+	const float* restrict c0 = cells->s0;
+	const float* restrict c1 = cells->s1;
+	const float* restrict c2 = cells->s2;
+	const float* restrict c3 = cells->s3;
+	const float* restrict c4 = cells->s4;
+	const float* restrict c5 = cells->s5;
+	const float* restrict c6 = cells->s6;
+	const float* restrict c7 = cells->s7;
+	const float* restrict c8 = cells->s8;
+
+	float* restrict t0 = tmp_cells->s0;
+	float* restrict t1 = tmp_cells->s1;
+	float* restrict t2 = tmp_cells->s2;
+	float* restrict t3 = tmp_cells->s3;
+	float* restrict t4 = tmp_cells->s4;
+	float* restrict t5 = tmp_cells->s5;
+	float* restrict t6 = tmp_cells->s6;
+	float* restrict t7 = tmp_cells->s7;
+	float* restrict t8 = tmp_cells->s8;
+
+	int edge_y[] = {1, params.local_ny};
+	for (int e = 0; e < 2; e++) {
+		int jj = edge_y[e];
+		int y_n = jj + 1;
+		int y_s = jj - 1;
+		int jj_nx = jj * (params.local_nx + 2);
+		int yn_nx = y_n * (params.local_nx + 2);
+		int ys_nx = y_s * (params.local_nx + 2);
+
+		float row_tot_u = 0.0f;
+		int row_tot_cells = 0;
+
+#pragma omp simd reduction(+ : row_tot_u, row_tot_cells)
+		for (int ii = 1; ii <= params.local_nx; ii++) {
+			int x_e = ii + 1;
+			int x_w = ii - 1;
+			int idx = ii + jj_nx;
+			const float w0 = 4.f / 9.f;	 /* weighting factor */
+			const float w1 = 1.f / 9.f;	 /* weighting factor */
+			const float w2 = 1.f / 36.f; /* weighting factor */
+			// c_sq is 1/3, so we can hardcode the inverted fraction
+			const float c_sq_inv_half = 1.5f;  // 1 / (2 * c_sq)
+			// pre-calculate as much as possible
+			const float one_minus_omega = 1.0f - params.omega;
+			const float omega_w0 = params.omega * w0;
+			const float omega_w1 = params.omega * w1;
+			const float omega_w2 = params.omega * w2;
+
+			/* propagate densities from neighbouring cells, following
+			** appropriate directions of travel and writing into
+			** speeds variables */
+			float speeds0 = c0[idx];		 /* central cell, no movement */
+			float speeds1 = c1[x_w + jj_nx]; /* east */
+			float speeds2 = c2[ii + ys_nx];	 /* north */
+			float speeds3 = c3[x_e + jj_nx]; /* west */
+			float speeds4 = c4[ii + yn_nx];	 /* south */
+			float speeds5 = c5[x_w + ys_nx]; /* north-east */
+			float speeds6 = c6[x_e + ys_nx]; /* north-west */
+			float speeds7 = c7[x_e + yn_nx]; /* south-west */
+			float speeds8 = c8[x_w + yn_nx]; /* south-east */
+
+			/* compute local density total */
+			float local_density = speeds0 + speeds1 + speeds2 + speeds3 + speeds4 + speeds5 + speeds6 + speeds7 + speeds8;
+			float inv_density = 1.0f / local_density;  // avoid division
+			/* compute x velocity component */
+			float u_x = (speeds1 + speeds5 + speeds8 - (speeds3 + speeds6 + speeds7)) * inv_density;
+			/* compute y velocity component */
+			float u_y = (speeds2 + speeds5 + speeds6 - (speeds4 + speeds7 + speeds8)) * inv_density;
+			/* velocity squared */
+			float u_sq = u_x * u_x + u_y * u_y;
+			// Pre-calculate common terms
+			float term_sq = u_sq * c_sq_inv_half;
+			float one_minus_term_sq = 1.0f - term_sq;
+			float w0_den_omega = omega_w0 * local_density;
+			float w1_den_omega = omega_w1 * local_density;
+			float w2_den_omega = omega_w2 * local_density;
+
+			float cu1 = 3.0f * u_x;
+			float cu2 = 3.0f * u_y;
+			// Exploit symmetry
+			float cu3 = -cu1;
+			float cu4 = -cu2;
+			float cu5 = cu1 + cu2;
+			float cu6 = -cu1 + cu2;
+			float cu7 = -cu5;
+			float cu8 = -cu6;
+
+			int is_solid = obstacles[idx];
+			// Use ternary operators to avoid big branch in loop body
+			t0[idx] = is_solid ? speeds0 : (speeds0 * one_minus_omega + w0_den_omega * one_minus_term_sq);
+			t1[idx] = is_solid ? speeds3 : (speeds1 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu1 * (1.0f + 0.5f * cu1)));
+			t2[idx] = is_solid ? speeds4 : (speeds2 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu2 * (1.0f + 0.5f * cu2)));
+			t3[idx] = is_solid ? speeds1 : (speeds3 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu3 * (1.0f + 0.5f * cu3)));
+			t4[idx] = is_solid ? speeds2 : (speeds4 * one_minus_omega + w1_den_omega * (one_minus_term_sq + cu4 * (1.0f + 0.5f * cu4)));
+			t5[idx] = is_solid ? speeds7 : (speeds5 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu5 * (1.0f + 0.5f * cu5)));
+			t6[idx] = is_solid ? speeds8 : (speeds6 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu6 * (1.0f + 0.5f * cu6)));
+			t7[idx] = is_solid ? speeds5 : (speeds7 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu7 * (1.0f + 0.5f * cu7)));
+			t8[idx] = is_solid ? speeds6 : (speeds8 * one_minus_omega + w2_den_omega * (one_minus_term_sq + cu8 * (1.0f + 0.5f * cu8)));
+
+			row_tot_u += is_solid ? 0.0f : sqrtf(u_sq);
+			row_tot_cells += is_solid ? 0 : 1;
+		}
+		// Accumulate into the pointers passed from the main wrapper
+		*local_tot_u += row_tot_u;
+		*local_tot_cells += row_tot_cells;
+	}
+}
+
+void start_halo_exchange_X(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, MPI_Request* reqs) {
+	// Pack X buffers
 	for (int jj = 1; jj <= params.local_ny; jj++) {
 		int i_left = 1 + jj * (params.local_nx + 2);				 // Leftmost internal cell
 		int i_right = params.local_nx + jj * (params.local_nx + 2);	 // Rightmost internal cell
@@ -434,14 +669,16 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 		buffers->send_east[b_idx + 2] = cells->s8[i_right];
 	}
 
-	// Exchange X
-	MPI_Sendrecv(buffers->send_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 0,
-				 buffers->recv_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 0,
-				 ranks.cart_comm, MPI_STATUS_IGNORE);
+	// Post X non-blocking calls
+	MPI_Irecv(buffers->recv_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 0, ranks.cart_comm, &reqs[0]);
+	MPI_Irecv(buffers->recv_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 1, ranks.cart_comm, &reqs[1]);
+	MPI_Isend(buffers->send_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 0, ranks.cart_comm, &reqs[2]);
+	MPI_Isend(buffers->send_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 1, ranks.cart_comm, &reqs[3]);
+}
 
-	MPI_Sendrecv(buffers->send_east, buffers->x_buf_size, MPI_FLOAT, ranks.e_rank, 1,
-				 buffers->recv_west, buffers->x_buf_size, MPI_FLOAT, ranks.w_rank, 1,
-				 ranks.cart_comm, MPI_STATUS_IGNORE);
+void wait_X_start_Y(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, MPI_Request* reqs_x, MPI_Request* reqs_y) {
+	// Wait for X to finish
+	MPI_Waitall(4, reqs_x, MPI_STATUSES_IGNORE);
 
 	// Unpack X
 	for (int jj = 1; jj <= params.local_ny; jj++) {
@@ -460,9 +697,7 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 		cells->s8[h_left] = buffers->recv_west[b_idx + 2];
 	}
 
-	// Y-Axis Exchange (Down <--> Up)
-
-	// Pack Y (Cols 0 to nx+1 - this includes x-halos for corners)
+	// Pack Y buffers
 	for (int ii = 0; ii <= params.local_nx + 1; ii++) {
 		int i_down = ii + 1 * (params.local_nx + 2);			  // Bottommost internal cell
 		int i_up = ii + params.local_ny * (params.local_nx + 2);  // Topmost internal cell
@@ -479,14 +714,16 @@ void exchange_halos(const t_param params, const t_ranks ranks, t_buffers* buffer
 		buffers->send_north[b_idx + 2] = cells->s6[i_up];
 	}
 
-	// Exchange Y
-	MPI_Sendrecv(buffers->send_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 2,
-				 buffers->recv_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 2,
-				 ranks.cart_comm, MPI_STATUS_IGNORE);
+	// Post Y non-blocking calls
+	MPI_Irecv(buffers->recv_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 2, ranks.cart_comm, &reqs_y[0]);
+	MPI_Irecv(buffers->recv_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 3, ranks.cart_comm, &reqs_y[1]);
+	MPI_Isend(buffers->send_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 2, ranks.cart_comm, &reqs_y[2]);
+	MPI_Isend(buffers->send_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 3, ranks.cart_comm, &reqs_y[3]);
+}
 
-	MPI_Sendrecv(buffers->send_north, buffers->y_buf_size, MPI_FLOAT, ranks.n_rank, 3,
-				 buffers->recv_south, buffers->y_buf_size, MPI_FLOAT, ranks.s_rank, 3,
-				 ranks.cart_comm, MPI_STATUS_IGNORE);
+void wait_halo_exchange_Y(const t_param params, t_buffers* buffers, t_speed* cells, MPI_Request* reqs_y) {
+	// Wait for Y to finish
+	MPI_Waitall(4, reqs_y, MPI_STATUSES_IGNORE);
 
 	// Unpack Y
 	for (int ii = 0; ii <= params.local_nx + 1; ii++) {
