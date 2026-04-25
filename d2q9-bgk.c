@@ -624,29 +624,39 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	MPI_Comm_size(MPI_COMM_WORLD, &ranks->size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &ranks->rank);
 
-	int p_dim = round(sqrt(ranks->size));
-	// check if the number of ranks is a perfect square
-	if (p_dim * p_dim != ranks->size) {
-		printf("Number of MPI ranks (%d) is not a perfect square. Cannot make square blocks!\n", ranks->size);
-		return EXIT_FAILURE;
-	}
-	// check if the grid perfectly divides into this processor grid
-	else if (params->nx % p_dim != 0) {
-		printf("Grid dimension (%d) is not divisible by processor grid dimension (%d)!\n", params->nx, p_dim);
-		return EXIT_FAILURE;
-	}
+	// 1D Horizontal Row Decomposition
+	int p_x = 1;			// Only 1 processor wide
+	int p_y = ranks->size;	// All ranks stacked vertically
 
-	int rank_x = ranks->rank % p_dim;
-	int rank_y = ranks->rank / p_dim;
-	ranks->w_rank = (rank_x == 0) ? (ranks->rank + p_dim - 1) : (ranks->rank - 1);
-	ranks->e_rank = (rank_x == p_dim - 1) ? (ranks->rank - p_dim + 1) : (ranks->rank + 1);
-	ranks->s_rank = (rank_y == 0) ? (ranks->rank + ranks->size - p_dim) : (ranks->rank - p_dim);
-	ranks->n_rank = (rank_y == p_dim - 1) ? (ranks->rank - ranks->size + p_dim) : (ranks->rank + p_dim);
+	// Rank coordinates (In 1D, rank_y is just the rank index)
+	int rank_x = 0;
+	int rank_y = ranks->rank;
 
-	params->local_nx = params->nx / p_dim;
-	params->local_ny = params->ny / p_dim;
-	params->startX = (ranks->rank * params->local_nx) % params->nx;
-	params->startY = ((ranks->rank * params->local_nx) / params->nx) * params->local_ny;
+	// Calculate Y-axis neighbors (North/South)
+	// Periodic wrapping: Rank 0's south neighbor is the last rank
+	ranks->s_rank = (rank_y == 0) ? (ranks->size - 1) : (ranks->rank - 1);
+	ranks->n_rank = (rank_y == p_y - 1) ? 0 : (ranks->rank + 1);
+
+	// Because this rank owns the enitre width (1024), its East and West neighbors
+	// are itself. MPI_Sendrecv will handle this as a local memory copy.
+	ranks->w_rank = ranks->rank;
+	ranks->e_rank = ranks->rank;
+
+	// Set X boundaries: Every rank gets the full width (nx)
+	params->local_nx = params->nx;
+	params->startX = 0;
+
+	// Set Y boundaries: Handle remainders if ny doesn't divide perfectly by ranks->size
+	int base_ny = params->ny / p_y;
+	int rem_ny = params->ny % p_y;
+
+	if (rank_y < rem_ny) {
+		params->local_ny = base_ny + 1;
+		params->startY = rank_y * params->local_ny;
+	} else {
+		params->local_ny = base_ny;
+		params->startY = rank_y * base_ny + rem_ny;
+	}
 
 	//sending/receiving 3 speeds
 	buffers->x_buf_size = params->local_ny * 3;
