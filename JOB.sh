@@ -10,11 +10,9 @@
 make clean
 make all
 
-echo "128x128"
-perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk ./input_128x128.params ./obstacles_128x128.dat
-echo "128x256"
-perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk ./input_128x256.params ./obstacles_128x256.dat
-echo "256x256"
-perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk ./input_256x256.params ./obstacles_256x256.dat
 echo "1024x1024"
-perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk ./input_1024x1024.params ./obstacles_1024x1024.dat
+perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk ../d2q9-bgk-inputs/input_1024x1024.params ../d2q9-bgk-inputs/obstacles_1024x1024.dat
+echo "2048x2048"
+perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk ../d2q9-bgk-inputs/input_2048x2048.params ../d2q9-bgk-inputs/obstacles_2048x2048.dat
+echo "4096x4096"
+perf stat -e cycles,instructions,cache-references,cache-misses ./d2q9-bgk ../d2q9-bgk-inputs/input_4096x4096.params ../d2q9-bgk-inputs/obstacles_4096x4096.dat
