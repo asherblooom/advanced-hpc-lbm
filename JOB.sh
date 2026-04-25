@@ -7,6 +7,9 @@
 #SBATCH --time=00:45:00
 #SBATCH --exclusive
 
+module load PrgEnv-cray
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
 make clean
 make all
 
