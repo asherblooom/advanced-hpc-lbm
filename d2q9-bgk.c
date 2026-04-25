@@ -910,7 +910,7 @@ void die(const char* message, const int line, const char* file) {
 	fprintf(stderr, "Error at line %d of file %s:\n", line, file);
 	fprintf(stderr, "%s\n", message);
 	fflush(stderr);
-	exit(EXIT_FAILURE);
+	MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 }
 
 void usage(const char* exe) {
