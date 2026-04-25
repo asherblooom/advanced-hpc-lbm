@@ -2,8 +2,8 @@
 
 EXE=d2q9-bgk
 
-CC=gcc
-CFLAGS= -std=c11 -Wall -O3 -march=native -ffast-math -fopenmp
+CC=nvc
+CFLAGS= -std=c11 -fast -Mfprelaxed -tp=native -mp
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
