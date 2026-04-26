@@ -2,13 +2,15 @@
 #SBATCH --job-name=job
 #SBATCH --output=OUTPUT.out
 #SBATCH --nodes=4
-#SBATCH --ntasks-per-node=144
-#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=8
+#SBATCH --cpus-per-task=18
 #SBATCH --time=00:02:00
 #SBATCH --exclusive
 
 module load PrgEnv-cray
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OMP_PLACES=cores
+export OMP_PROC_BIND=close
 
 make clean
 make all
