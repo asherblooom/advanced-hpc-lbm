@@ -172,7 +172,11 @@ void usage(const char* exe);
 ** initialise, timestep loop, finalise
 */
 int main(int argc, char* argv[]) {
-	MPI_Init(&argc, &argv);
+	int provided;
+	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+	if (provided < MPI_THREAD_FUNNELED) {
+		printf("Warning: The MPI library does not support thread funneled level\n");
+	}
 
 	char* paramfile = NULL;	   /* name of the input parameter file */
 	char* obstaclefile = NULL; /* name of a the input obstacle file */
@@ -304,7 +308,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles) {
 	// removed because MPI_Dims_create might divide grid into chunks that aren't perfectly divisible by 16
 	// __builtin_assume(params.local_nx % 16 == 0);
 // #pragma omp simd aligned(c1, c3, c5, c6, c7, c8 : 64)
-#pragma omp simd
+#pragma omp parallel for simd
 	for (int ii = 1; ii < params.local_nx + 1; ii++) {
 		int idx = ii + jj_nx;
 		/* if the cell is not occupied and
@@ -348,6 +352,10 @@ void timestep_merged_interior(const t_param params, t_speed* cells, t_speed* tmp
 	float* restrict t7 = tmp_cells->s7;
 	float* restrict t8 = tmp_cells->s8;
 
+	float thread_tot_u = 0.0f;
+	int thread_tot_cells = 0;
+
+#pragma omp parallel for reduction(+ : thread_tot_u, thread_tot_cells)
 	for (int jj = 2; jj < params.local_ny; jj++) {
 		int y_n = jj + 1;
 		int y_s = jj - 1;
@@ -428,10 +436,11 @@ void timestep_merged_interior(const t_param params, t_speed* cells, t_speed* tmp
 			row_tot_u += is_solid ? 0.0f : sqrtf(u_sq);
 			row_tot_cells += is_solid ? 0 : 1;
 		}
-		// Accumulate into the pointers passed from the main wrapper
-		*local_tot_u += row_tot_u;
-		*local_tot_cells += row_tot_cells;
+		thread_tot_u += row_tot_u;
+		thread_tot_cells += row_tot_cells;
 	}
+	*local_tot_u += thread_tot_u;
+	*local_tot_cells += thread_tot_cells;
 }
 
 void timestep_merged_left_right(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells) {
@@ -455,6 +464,10 @@ void timestep_merged_left_right(const t_param params, t_speed* cells, t_speed* t
 	float* restrict t7 = tmp_cells->s7;
 	float* restrict t8 = tmp_cells->s8;
 
+	float thread_tot_u = 0.0f;
+	int thread_tot_cells = 0;
+
+#pragma omp parallel for reduction(+ : thread_tot_u, thread_tot_cells)
 	for (int jj = 2; jj < params.local_ny; jj++) {
 		int y_n = jj + 1;
 		int y_s = jj - 1;
@@ -538,9 +551,11 @@ void timestep_merged_left_right(const t_param params, t_speed* cells, t_speed* t
 			row_tot_u += is_solid ? 0.0f : sqrtf(u_sq);
 			row_tot_cells += is_solid ? 0 : 1;
 		}
-		*local_tot_u += row_tot_u;
-		*local_tot_cells += row_tot_cells;
+		thread_tot_u += row_tot_u;
+		thread_tot_cells += row_tot_cells;
 	}
+	*local_tot_u += thread_tot_u;
+	*local_tot_cells += thread_tot_cells;
 }
 
 void timestep_merged_top_bottom(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, float* local_tot_u, int* local_tot_cells) {
@@ -564,6 +579,9 @@ void timestep_merged_top_bottom(const t_param params, t_speed* cells, t_speed* t
 	float* restrict t7 = tmp_cells->s7;
 	float* restrict t8 = tmp_cells->s8;
 
+	float thread_tot_u = 0.0f;
+	int thread_tot_cells = 0;
+
 	int edge_y[] = {1, params.local_ny};
 	for (int e = 0; e < 2; e++) {
 		int jj = edge_y[e];
@@ -576,7 +594,7 @@ void timestep_merged_top_bottom(const t_param params, t_speed* cells, t_speed* t
 		float row_tot_u = 0.0f;
 		int row_tot_cells = 0;
 
-#pragma omp simd reduction(+ : row_tot_u, row_tot_cells)
+#pragma omp parallel for simd reduction(+ : row_tot_u, row_tot_cells)
 		for (int ii = 1; ii <= params.local_nx; ii++) {
 			int x_e = ii + 1;
 			int x_w = ii - 1;
@@ -646,10 +664,11 @@ void timestep_merged_top_bottom(const t_param params, t_speed* cells, t_speed* t
 			row_tot_u += is_solid ? 0.0f : sqrtf(u_sq);
 			row_tot_cells += is_solid ? 0 : 1;
 		}
-		// Accumulate into the pointers passed from the main wrapper
-		*local_tot_u += row_tot_u;
-		*local_tot_cells += row_tot_cells;
+		thread_tot_u += row_tot_u;
+		thread_tot_cells += row_tot_cells;
 	}
+	*local_tot_u += thread_tot_u;
+	*local_tot_cells += thread_tot_cells;
 }
 
 void start_halo_exchange_X(const t_param params, const t_ranks ranks, t_buffers* buffers, t_speed* cells, MPI_Request* reqs) {
@@ -792,7 +811,6 @@ float av_velocity(const t_param params, const t_ranks ranks, t_speed* cells, int
 	return global_tot_u / (float)global_tot_cells;
 }
 
-// FIXME: ONLY ONE GUY READS FROM FILES????????????
 int initialise(const char* paramfile, const char* obstaclefile,
 			   t_param* params, t_ranks* ranks, t_buffers* buffers, t_speed* cells_ptr, t_speed* tmp_cells_ptr,
 			   int** obstacles_ptr, float** av_vels_ptr) {
@@ -940,6 +958,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	float w1 = params->density / 9.f;
 	float w2 = params->density / 36.f;
 
+#pragma omp parallel for
 	for (int jj = 1; jj < params->local_ny + 1; jj++) {
 		int jj_nx = jj * (params->local_nx + 2);
 		for (int ii = 1; ii < params->local_nx + 1; ii++) {
@@ -960,6 +979,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	}
 
 	/* first set all cells in obstacle array to zero */
+#pragma omp parallel for
 	for (int jj = 0; jj < params->local_ny + 2; jj++) {
 		for (int ii = 0; ii < params->local_nx + 2; ii++) {
 			(*obstacles_ptr)[ii + jj * (params->local_nx + 2)] = 0;
