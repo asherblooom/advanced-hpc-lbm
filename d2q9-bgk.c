@@ -53,6 +53,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <time.h>
@@ -1084,13 +1085,15 @@ int write_values(const t_param params, const t_ranks ranks, t_speed* cells, int*
 	}
 	MPI_Barrier(ranks.cart_comm);  // wait so that nobody starts writing before delete
 
-	// Open file for parallel writing
-	if (MPI_File_open(ranks.cart_comm, FINALSTATEFILE, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh) != MPI_SUCCESS) {
-		die("Failed to open MPI file for final state", __LINE__, __FILE__);
-	}
 	// Exactly 92 characters per line based on the 12-decimal precision format string
 	const int LINE_LENGTH = 92;
-	char line_buffer[128];	// Buffer larger than 92 to be safe
+
+	// Allocate local contiguous buffer for all this rank's text
+	int local_num_cells = params.local_nx * params.local_ny;
+	char* local_buffer = (char*)malloc(local_num_cells * LINE_LENGTH * sizeof(char));
+	if (local_buffer == NULL) die("Failed to allocate I/O buffer", __LINE__, __FILE__);
+	char temp_buf[128];	 // Temporary buffer for safe formatting
+	int buf_idx = 0;
 
 	for (int jj = 1; jj < params.local_ny + 1; jj++) {
 		for (int ii = 1; ii < params.local_nx + 1; ii++) {
@@ -1131,17 +1134,41 @@ int write_values(const t_param params, const t_ranks ranks, t_speed* cells, int*
 				/* compute pressure */
 				pressure = local_density * c_sq;
 			}
-			/* write to file */
-			snprintf(line_buffer, sizeof(line_buffer),
+			// Write to temporary buffer, then copy exactly 92 bytes to avoid snprintf's null terminator
+			// overwriting the first character of the next line.
+			snprintf(temp_buf, sizeof(temp_buf),
 					 "%04d %04d %19.12E %19.12E %19.12E %19.12E %d\n",
 					 global_x, global_y, u_x, u_y, u, pressure, obstacles[idx]);
 
-			MPI_Offset offset = ((MPI_Offset)global_y * params.nx + global_x) * LINE_LENGTH;
-			// Write exactly 92 bytes
-			MPI_File_write_at(fh, offset, line_buffer, LINE_LENGTH, MPI_CHAR, MPI_STATUS_IGNORE);
+			memcpy(&local_buffer[buf_idx * LINE_LENGTH], temp_buf, LINE_LENGTH);
+			buf_idx++;
 		}
 	}
+
+	// define the MPI Subarray to map the local buffer to the global file
+	MPI_Datatype filetype;
+	int ndims = 2;
+	// Scale the X dimension by the LINE_LENGTH since each "cell" is 92 characters wide
+	int global_sizes[2] = {params.ny, params.nx * LINE_LENGTH};
+	int local_sizes[2] = {params.local_ny, params.local_nx * LINE_LENGTH};
+	int starts[2] = {params.startY, params.startX * LINE_LENGTH};
+
+	MPI_Type_create_subarray(ndims, global_sizes, local_sizes, starts,
+							 MPI_ORDER_C, MPI_CHAR, &filetype);
+	MPI_Type_commit(&filetype);
+
+	if (MPI_File_open(ranks.cart_comm, FINALSTATEFILE, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh) != MPI_SUCCESS) {
+		die("Failed to open MPI file for final state", __LINE__, __FILE__);
+	}
+	// Set the view using newly created filetype
+	MPI_File_set_view(fh, 0, MPI_CHAR, filetype, "native", MPI_INFO_NULL);
+	// Write the entire local buffer in one go
+	MPI_File_write_all(fh, local_buffer, local_num_cells * LINE_LENGTH, MPI_CHAR, MPI_STATUS_IGNORE);
+
+	// Clean up
 	MPI_File_close(&fh);
+	MPI_Type_free(&filetype);
+	free(local_buffer);
 
 	// FIXME: USE MPI_Allreduce ONLY ONCE HERE!!!!!!!!!!!!!!!!!!
 	if (ranks.rank == 0) {
