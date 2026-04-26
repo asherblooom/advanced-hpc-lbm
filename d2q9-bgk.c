@@ -221,6 +221,9 @@ int main(int argc, char* argv[]) {
 	col_tic = comp_toc;
 
 	// Collate data from ranks here
+	float reynolds = calc_reynolds(params, &cells, obstacles);
+	write_values(params, ranks, &cells, obstacles, av_vels);
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	/* Total/collate time stops here.*/
 	gettimeofday(&timstr, NULL);
@@ -228,7 +231,6 @@ int main(int argc, char* argv[]) {
 	tot_toc = col_toc;
 
 	/* write final values and free memory */
-	float reynolds = calc_reynolds(params, &cells, obstacles);
 	if (ranks.rank == 0) {
 		printf("==done==\n");
 		printf("Reynolds number:\t\t%.12E\n", reynolds);
@@ -237,7 +239,6 @@ int main(int argc, char* argv[]) {
 		printf("Elapsed Collate time:\t\t\t%.6lf (s)\n", col_toc - col_tic);
 		printf("Elapsed Total time:\t\t\t%.6lf (s)\n", tot_toc - tot_tic);
 	}
-	write_values(params, ranks, &cells, obstacles, av_vels);
 	finalise(&params, &buffers, &cells, &tmp_cells, &obstacles, &av_vels);
 
 	MPI_Finalize();
