@@ -225,7 +225,10 @@ int main(int argc, char* argv[]) {
 	comp_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 	col_tic = comp_toc;
 
-	// Collate data from ranks here
+	float reynolds = calc_reynolds(params, ranks, &cells, obstacles);
+	write_values(params, ranks, &cells, obstacles, av_vels);
+	/* Wait for all ranks to finish writing before stopping the clock */
+	MPI_Barrier(ranks.cart_comm);
 
 	/* Total/collate time stops here.*/
 	gettimeofday(&timstr, NULL);
@@ -233,7 +236,6 @@ int main(int argc, char* argv[]) {
 	tot_toc = col_toc;
 
 	/* write final values and free memory */
-	float reynolds = calc_reynolds(params, ranks, &cells, obstacles);
 	if (ranks.rank == 0) {
 		printf("==done==\n");
 		printf("Reynolds number:\t\t%.12E\n", reynolds);
@@ -242,7 +244,6 @@ int main(int argc, char* argv[]) {
 		printf("Elapsed Collate time:\t\t\t%.6lf (s)\n", col_toc - col_tic);
 		printf("Elapsed Total time:\t\t\t%.6lf (s)\n", tot_toc - tot_tic);
 	}
-	write_values(params, ranks, &cells, obstacles, av_vels);
 	finalise(&params, &buffers, &cells, &tmp_cells, &obstacles, &av_vels);
 
 	MPI_Finalize();
@@ -744,11 +745,8 @@ void wait_halo_exchange_Y(const t_param params, t_buffers* buffers, t_speed* cel
 }
 
 float av_velocity(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles) {
-	int tot_cells = 0; /* no. of cells used in calculation */
-	float tot_u;	   /* accumulated magnitudes of velocity for each cell */
-
-	/* initialise */
-	tot_u = 0.f;
+	int tot_cells = 0;	/* no. of cells used in calculation */
+	float tot_u = 0.0f; /* accumulated magnitudes of velocity for each cell */
 
 	/* loop over all non-blocked cells */
 	for (int jj = 1; jj < params.local_ny + 1; jj++) {
