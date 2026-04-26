@@ -211,7 +211,7 @@ int main(int argc, char* argv[]) {
 		cells = tmp_cells;
 		tmp_cells = swap;
 #ifdef DEBUG
-		float density = total_density(params, cells);
+		float density = total_density(params, ranks, &cells);
 		if (ranks.rank == 0) {
 			printf("==timestep: %d==\n", tt);
 			printf("av velocity: %.12E\n", av_vels[tt]);
@@ -1072,71 +1072,78 @@ float total_density(const t_param params, const t_ranks ranks, t_speed* cells) {
 int write_values(const t_param params, const t_ranks ranks, t_speed* cells, int* obstacles, float* av_vels) {
 	FILE* fp;					  /* file pointer */
 	const float c_sq = 1.f / 3.f; /* sq. of speed of sound */
-	// float local_density;		  /* per grid cell sum of densities */
-	// float pressure;				  /* fluid pressure in grid cell */
-	// float u_x;					  /* x-component of velocity in grid cell */
-	// float u_y;					  /* y-component of velocity in grid cell */
-	// float u;					  /* norm--root of summed squares--of u_x and u_y */
+								  // float local_density;		  /* per grid cell sum of densities */
+								  // float pressure;				  /* fluid pressure in grid cell */
+								  // float u_x;					  /* x-component of velocity in grid cell */
+								  // float u_y;					  /* y-component of velocity in grid cell */
+								  // float u;					  /* norm--root of summed squares--of u_x and u_y */
 
+	MPI_File fh;
+
+	// Delete the file if it exists since opening a file with MPI IO doesn't overwrite the contents
 	if (ranks.rank == 0) {
-		fp = fopen(FINALSTATEFILE, "w");
-		if (fp == NULL) die("could not open file output file", __LINE__, __FILE__);
-		fclose(fp);
+		(void)MPI_File_delete(FINALSTATEFILE, MPI_INFO_NULL);  // ignore return value
 	}
-	for (int turn = 0; turn < ranks.size; turn++) {
-		MPI_Barrier(ranks.cart_comm);
+	MPI_Barrier(ranks.cart_comm);  // wait so that nobody starts writing before delete
 
-		if (ranks.rank == turn) {
-			fp = fopen(FINALSTATEFILE, "a");
-			if (fp == NULL) die("could not open file output file", __LINE__, __FILE__);
+	// Open file for parallel writing
+	if (MPI_File_open(ranks.cart_comm, FINALSTATEFILE, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh) != MPI_SUCCESS) {
+		die("Failed to open MPI file for final state", __LINE__, __FILE__);
+	}
+	// Exactly 92 characters per line based on the 12-decimal precision format string
+	const int LINE_LENGTH = 92;
+	char line_buffer[128];	// Buffer larger than 92 to be safe
 
-			for (int jj = 1; jj < params.local_ny + 1; jj++) {
-				for (int ii = 1; ii < params.local_nx + 1; ii++) {
-					int idx = ii + jj * (params.local_nx + 2);
+	for (int jj = 1; jj < params.local_ny + 1; jj++) {
+		for (int ii = 1; ii < params.local_nx + 1; ii++) {
+			int idx = ii + jj * (params.local_nx + 2);
 
-					int global_x = params.startX + (ii - 1);
-					int global_y = params.startY + (jj - 1);
+			int global_x = params.startX + (ii - 1);
+			int global_y = params.startY + (jj - 1);
 
-					float u_x, u_y, u, pressure;
+			float u_x, u_y, u, pressure;
 
-					/* an occupied cell */
-					if (obstacles[idx]) {
-						u_x = u_y = u = 0.f;
-						pressure = params.density * c_sq;
-					}
-					/* no obstacle */
-					else {
-						float local_density = cells->s0[idx] + cells->s1[idx] + cells->s2[idx] + cells->s3[idx] + cells->s4[idx] + cells->s5[idx] + cells->s6[idx] + cells->s7[idx] + cells->s8[idx];
-
-						/* compute x velocity component */
-						u_x = (cells->s1[idx] +
-							   cells->s5[idx] +
-							   cells->s8[idx] -
-							   (cells->s3[idx] +
-								cells->s6[idx] +
-								cells->s7[idx])) /
-							  local_density;
-						/* compute y velocity component */
-						u_y = (cells->s2[idx] +
-							   cells->s5[idx] +
-							   cells->s6[idx] -
-							   (cells->s4[idx] +
-								cells->s7[idx] +
-								cells->s8[idx])) /
-							  local_density;
-						/* compute norm of velocity */
-						u = sqrtf((u_x * u_x) + (u_y * u_y));
-						/* compute pressure */
-						pressure = local_density * c_sq;
-					}
-
-					/* write to file */
-					fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", global_x, global_y, u_x, u_y, u, pressure, obstacles[idx]);
-				}
+			/* an occupied cell */
+			if (obstacles[idx]) {
+				u_x = u_y = u = 0.f;
+				pressure = params.density * c_sq;
 			}
-			fclose(fp);
+			/* no obstacle */
+			else {
+				float local_density = cells->s0[idx] + cells->s1[idx] + cells->s2[idx] + cells->s3[idx] + cells->s4[idx] + cells->s5[idx] + cells->s6[idx] + cells->s7[idx] + cells->s8[idx];
+
+				/* compute x velocity component */
+				u_x = (cells->s1[idx] +
+					   cells->s5[idx] +
+					   cells->s8[idx] -
+					   (cells->s3[idx] +
+						cells->s6[idx] +
+						cells->s7[idx])) /
+					  local_density;
+				/* compute y velocity component */
+				u_y = (cells->s2[idx] +
+					   cells->s5[idx] +
+					   cells->s6[idx] -
+					   (cells->s4[idx] +
+						cells->s7[idx] +
+						cells->s8[idx])) /
+					  local_density;
+				/* compute norm of velocity */
+				u = sqrtf((u_x * u_x) + (u_y * u_y));
+				/* compute pressure */
+				pressure = local_density * c_sq;
+			}
+			/* write to file */
+			snprintf(line_buffer, sizeof(line_buffer),
+					 "%04d %04d %19.12E %19.12E %19.12E %19.12E %d\n",
+					 global_x, global_y, u_x, u_y, u, pressure, obstacles[idx]);
+
+			MPI_Offset offset = ((MPI_Offset)global_y * params.nx + global_x) * LINE_LENGTH;
+			// Write exactly 92 bytes
+			MPI_File_write_at(fh, offset, line_buffer, LINE_LENGTH, MPI_CHAR, MPI_STATUS_IGNORE);
 		}
 	}
+	MPI_File_close(&fh);
 
 	// FIXME: USE MPI_Allreduce ONLY ONCE HERE!!!!!!!!!!!!!!!!!!
 	if (ranks.rank == 0) {
