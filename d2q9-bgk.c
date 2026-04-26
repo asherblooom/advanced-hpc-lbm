@@ -802,45 +802,35 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	int blocked;		/* indicates whether a cell is blocked by an obstacle */
 	int retval;			/* to hold return value for checking */
 
-	/* open the parameter file */
-	fp = fopen(paramfile, "r");
+	int world_rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-	if (fp == NULL) {
-		sprintf(message, "could not open input parameter file: %s", paramfile);
-		die(message, __LINE__, __FILE__);
+	if (world_rank == 0) {
+		fp = fopen(paramfile, "r");
+		if (fp == NULL) {
+			sprintf(message, "could not open input parameter file: %s", paramfile);
+			die(message, __LINE__, __FILE__);
+		}
+
+		retval = fscanf(fp, "%d\n", &(params->nx));
+		if (retval != 1) die("could not read param file: nx", __LINE__, __FILE__);
+		retval = fscanf(fp, "%d\n", &(params->ny));
+		if (retval != 1) die("could not read param file: ny", __LINE__, __FILE__);
+		retval = fscanf(fp, "%d\n", &(params->maxIters));
+		if (retval != 1) die("could not read param file: maxIters", __LINE__, __FILE__);
+		retval = fscanf(fp, "%d\n", &(params->reynolds_dim));
+		if (retval != 1) die("could not read param file: reynolds_dim", __LINE__, __FILE__);
+		retval = fscanf(fp, "%f\n", &(params->density));
+		if (retval != 1) die("could not read param file: density", __LINE__, __FILE__);
+		retval = fscanf(fp, "%f\n", &(params->accel));
+		if (retval != 1) die("could not read param file: accel", __LINE__, __FILE__);
+		retval = fscanf(fp, "%f\n", &(params->omega));
+		if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
+
+		fclose(fp);
 	}
 
-	/* read in the parameter values */
-	retval = fscanf(fp, "%d\n", &(params->nx));
-
-	if (retval != 1) die("could not read param file: nx", __LINE__, __FILE__);
-
-	retval = fscanf(fp, "%d\n", &(params->ny));
-
-	if (retval != 1) die("could not read param file: ny", __LINE__, __FILE__);
-
-	retval = fscanf(fp, "%d\n", &(params->maxIters));
-
-	if (retval != 1) die("could not read param file: maxIters", __LINE__, __FILE__);
-
-	retval = fscanf(fp, "%d\n", &(params->reynolds_dim));
-
-	if (retval != 1) die("could not read param file: reynolds_dim", __LINE__, __FILE__);
-
-	retval = fscanf(fp, "%f\n", &(params->density));
-
-	if (retval != 1) die("could not read param file: density", __LINE__, __FILE__);
-
-	retval = fscanf(fp, "%f\n", &(params->accel));
-
-	if (retval != 1) die("could not read param file: accel", __LINE__, __FILE__);
-
-	retval = fscanf(fp, "%f\n", &(params->omega));
-
-	if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
-
-	/* and close up the file */
-	fclose(fp);
+	MPI_Bcast(params, sizeof(t_param), MPI_BYTE, 0, MPI_COMM_WORLD);
 
 	/*
   ** Allocate memory.
@@ -976,38 +966,57 @@ int initialise(const char* paramfile, const char* obstaclefile,
 		}
 	}
 
-	/* open the obstacle data file */
-	fp = fopen(obstaclefile, "r");
+	int* global_obstacles = NULL;
 
-	if (fp == NULL) {
-		sprintf(message, "could not open input obstacles file: %s", obstaclefile);
-		die(message, __LINE__, __FILE__);
+	// rank 0 reads and broadcasts
+	if (world_rank == 0) {
+		// calloc zeros the array automatically
+		global_obstacles = (int*)calloc(params->nx * params->ny, sizeof(int));
+
+		fp = fopen(obstaclefile, "r");
+		if (fp == NULL) {
+			sprintf(message, "could not open input obstacles file: %s", obstaclefile);
+			die(message, __LINE__, __FILE__);
+		}
+
+		while ((retval = fscanf(fp, "%d %d %d\n", &xx, &yy, &blocked)) != EOF) {
+			if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
+			if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
+			if (yy < 0 || yy > params->ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
+			if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
+
+			// Map 2D coordinate to 1D array index
+			global_obstacles[xx + yy * params->nx] = blocked;
+		}
+		fclose(fp);
+	} else {
+		// Other ranks just need to allocate the space to receive the broadcast
+		global_obstacles = (int*)malloc(params->nx * params->ny * sizeof(int));
 	}
 
-	/* read-in the blocked cells list */
-	while ((retval = fscanf(fp, "%d %d %d\n", &xx, &yy, &blocked)) != EOF) {
-		/* some checks */
-		if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
+	// Broadcast the full grid to all ranks
+	MPI_Bcast(global_obstacles, params->nx * params->ny, MPI_INT, 0, MPI_COMM_WORLD);
 
-		if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
+	// --- NEW: Every rank copies its local chunk from the global array ---
+	for (int jj = 0; jj < params->local_ny; jj++) {
+		for (int ii = 0; ii < params->local_nx; ii++) {
+			int global_x = params->startX + ii;
+			int global_y = params->startY + jj;
 
-		if (yy < 0 || yy > params->ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
-
-		if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
-
-		if (xx < params->startX || xx >= params->startX + params->local_nx) continue;
-		if (yy < params->startY || yy >= params->startY + params->local_ny) continue;
-		/* assign to array */
-		(*obstacles_ptr)[(xx - params->startX + 1) + (yy - params->startY + 1) * (params->local_nx + 2)] = blocked;
+			if (global_obstacles[global_x + global_y * params->nx] == 1) {
+				// Map to the local grid (with +1 offsets for halos)
+				(*obstacles_ptr)[(ii + 1) + (jj + 1) * (params->local_nx + 2)] = 1;
+			}
+		}
 	}
 
-	/* and close the file */
-	fclose(fp);
+	// Clean up the temporary array
+	free(global_obstacles);
 
 	/*
-  ** allocate space to hold a record of the avarage velocities computed
-  ** at each timestep
-  */
+	** allocate space to hold a record of the avarage velocities computed
+	** at each timestep
+	*/
 	*av_vels_ptr = (float*)malloc(sizeof(float) * params->maxIters);
 
 	return EXIT_SUCCESS;
@@ -1016,8 +1025,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
 int finalise(const t_param* params, t_buffers* buffers, t_speed* cells_ptr, t_speed* tmp_cells_ptr,
 			 int** obstacles_ptr, float** av_vels_ptr) {
 	/*
-  ** free up allocated memory
-  */
+	** free up allocated memory
+	*/
 	// allocated as one big block so just need to free s0
 	free(cells_ptr->s0);
 	free(tmp_cells_ptr->s0);
