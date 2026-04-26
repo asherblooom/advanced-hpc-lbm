@@ -775,6 +775,7 @@ float av_velocity(const t_param params, const t_ranks ranks, t_speed* cells, int
 							  cells->s7[idx] +
 							  cells->s8[idx])) /
 							local_density;
+
 				/* accumulate the norm of x- and y- velocity components */
 				tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
 				/* increase counter of inspected cells */
