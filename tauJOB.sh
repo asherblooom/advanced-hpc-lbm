@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=tau_profiling
-#SBATCH --output=OUTPUT.out
+#SBATCH --output=OUTPUT-TAU.out
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=144
 #SBATCH --cpus-per-task=1
